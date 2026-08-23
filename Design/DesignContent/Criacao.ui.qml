@@ -54,6 +54,7 @@ Rectangle {
             anchors.leftMargin: 8
             anchors.rightMargin: 8
             placeholderText: qsTr("Título da eleição")
+            color: "#333333"
             font.pixelSize: 12
             verticalAlignment: Text.AlignVCenter
             clip: true
@@ -428,6 +429,7 @@ Rectangle {
                     anchors.rightMargin: 8
                     placeholderText: qsTr("Digite a pergunta...")
                     text: questionText
+                    color: "#333333"
                     font.pixelSize: 12
                     verticalAlignment: Text.AlignVCenter
                     clip: true
@@ -466,6 +468,7 @@ Rectangle {
                             anchors.rightMargin: 8
                             placeholderText: qsTr("Opção...")
                             text: optionText
+                            color: "#333333"
                             font.pixelSize: 12
                             verticalAlignment: Text.AlignVCenter
                             clip: true
