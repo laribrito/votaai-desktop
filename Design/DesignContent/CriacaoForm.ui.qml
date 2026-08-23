@@ -17,8 +17,54 @@ Rectangle {
     height: Constants.height
     color: "#bcbcbc"
     
+    id: root
+    
+    property alias textInput: textInput
+    property alias csvInput: csvInput
+    property alias browseButton: browseButton
+    property alias downloadTemplateBtn: downloadTemplateBtn
+    property alias searchInput: searchInput
+    property alias tableView: tableView
+    property alias addQuestionBtn: addQuestionBtn
+    property alias questionsList: questionsList
+    property alias createElectionBtn: createElectionBtn
+    property alias fileDialog: fileDialog
+    property alias saveFileDialog: saveFileDialog
+    property alias questionsModel: questionsModel
+
     property bool isValidCsv: false
     property string csvErrorMessage: ""
+    property bool hasValidQuestion: false
+    
+    signal backClicked()
+    signal moveQuestionUpClicked(int index)
+    signal moveQuestionDownClicked(int index)
+    signal questionTextEdited(int index, string text)
+    signal addOptionClicked(int index)
+    signal optionTextEdited(int questionIndex, int optionIndex, string text)
+
+    Button {
+        id: backButton
+        x: 45
+        y: 12
+        width: 30
+        height: 30
+        text: "←"
+        
+        background: Rectangle {
+            color: parent.down ? "#999999" : (parent.hovered ? "#aaaaaa" : "transparent")
+            radius: 15
+        }
+        contentItem: Text {
+            text: parent.text
+            color: "#333333"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 22
+            font.bold: true
+        }
+        onClicked: root.backClicked()
+    }
 
     Text {
         id: text1
@@ -110,7 +156,6 @@ Rectangle {
         width: 100
         height: 30
         text: qsTr("Procurar...")
-        onClicked: fileDialog.open()
         
         background: Rectangle {
             color: parent.down ? "#2b3d4f" : (parent.hovered ? "#3e5770" : "#34495e")
@@ -210,7 +255,6 @@ Rectangle {
                     placeholderText: qsTr("Buscar eleitor...")
                     font.pixelSize: 12
                     color: "#333333"
-                    onTextEdited: backend.search(text)
                     
                     background: Rectangle {
                         border.color: "#a0a0a0"
@@ -249,7 +293,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.margins: 1
                 
-                model: backend.csvModel
+                model: typeof backend !== 'undefined' && backend ? backend.csvModel : null
                 clip: true
                 
                 columnWidthProvider: function (column) {
@@ -277,7 +321,7 @@ Rectangle {
     Button {
         id: addQuestionBtn
         x: 520
-        y: 138
+        y: 118
         width: 180
         height: 30
         text: qsTr("+ Adicionar Pergunta")
@@ -302,23 +346,14 @@ Rectangle {
             font.pixelSize: 12
             font.bold: true
         }
-
-        onClicked: {
-            questionsModel.append({
-                "questionText": "",
-                "options": [
-                    {"optionText": ""}
-                ]
-            })
-        }
     }
 
     ListView {
         id: questionsList
         x: 520
-        y: 180
+        y: 163
         width: 460
-        height: Constants.height - 180 - 90
+        height: Constants.height - 163 - 90
         clip: true
         spacing: 15
 
@@ -378,11 +413,7 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 10
                 }
-                onClicked: {
-                    if (index > 0) {
-                        questionsModel.move(index, index - 1, 1)
-                    }
-                }
+                onClicked: root.moveQuestionUpClicked(index)
             }
 
             Button {
@@ -406,11 +437,7 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 10
                 }
-                onClicked: {
-                    if (index < questionsModel.count - 1) {
-                        questionsModel.move(index, index + 1, 1)
-                    }
-                }
+                onClicked: root.moveQuestionDownClicked(index)
             }
 
             Rectangle {
@@ -434,7 +461,7 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                     clip: true
                     background: Item {}
-                    onTextEdited: questionText = text
+                    onTextEdited: root.questionTextEdited(index, text)
                 }
             }
 
@@ -473,7 +500,7 @@ Rectangle {
                             verticalAlignment: Text.AlignVCenter
                             clip: true
                             background: Item {}
-                            onTextEdited: optionText = text
+                            onTextEdited: root.optionTextEdited(index, index, text)
                         }
                     }
                 }
@@ -503,9 +530,7 @@ Rectangle {
                         font.pixelSize: 11
                     }
 
-                    onClicked: {
-                        options.append({"optionText": "Nova Opção"})
-                    }
+                    onClicked: root.addOptionClicked(index)
                 }
             }
         }
@@ -515,22 +540,6 @@ Rectangle {
         id: fileDialog
         title: "Selecione um arquivo CSV"
         nameFilters: ["Arquivos CSV (*.csv)", "Todos os arquivos (*)"]
-        onAccepted: {
-            var path = selectedFile.toString();
-            path = path.replace(/^(file:\/{2})/,"");
-            path = decodeURIComponent(path);
-            
-            var err = backend.validateCsv(path);
-            if (err === "") {
-                csvInput.text = path;
-                isValidCsv = true;
-                csvErrorMessage = "";
-            } else {
-                csvInput.text = "Arquivo selecionado é inválido!";
-                isValidCsv = false;
-                csvErrorMessage = err;
-            }
-        }
     }
 
     FileDialog {
@@ -539,12 +548,6 @@ Rectangle {
         fileMode: FileDialog.SaveFile
         nameFilters: ["Arquivos CSV (*.csv)"]
         defaultSuffix: "csv"
-        onAccepted: {
-            var path = selectedFile.toString();
-            path = path.replace(/^(file:\/{2})/,"");
-            path = decodeURIComponent(path);
-            backend.saveTemplate(path);
-        }
     }
 
     Button {
@@ -554,6 +557,8 @@ Rectangle {
         width: 160
         height: 40
         text: qsTr("Criar Eleição")
+        enabled: textInput.text.trim() !== "" && isValidCsv && hasValidQuestion
+        opacity: enabled ? 1.0 : 0.5
         
         background: Rectangle {
             color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")

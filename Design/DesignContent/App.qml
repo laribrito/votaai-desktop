@@ -14,7 +14,10 @@ Window {
         anchors.fill: parent
         initialItem: Main {
             onCriarEleicaoClicked: {
-                stackView.push("Criacao.ui.qml")
+                var item = stackView.push("Criacao.qml")
+                if (item) {
+                    item.backClicked.connect(function() { stackView.pop() })
+                }
             }
         }
     }
