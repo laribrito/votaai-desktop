@@ -1,5 +1,9 @@
 import csv
+import json
 from PySide6.QtCore import QObject, Slot, Signal, Property, QAbstractTableModel, Qt, QSortFilterProxyModel
+
+from app.controllers.cryptoController import CryptoController
+from app.services.election_api import ElectionApiService
 
 class CsvTableModel(QAbstractTableModel):
     def __init__(self, data=None, headers=None, parent=None):
@@ -41,6 +45,8 @@ class CsvController(QObject):
     def __init__(self, institutional_domain="@uesc.br"):
         super().__init__()
         self.institutional_domain = institutional_domain
+        self.crypto_controller = CryptoController()
+        self.api_service = ElectionApiService()
         self._csv_model = CsvTableModel()
         self._proxy_model = QSortFilterProxyModel()
         self._proxy_model.setSourceModel(self._csv_model)
@@ -69,12 +75,19 @@ class CsvController(QObject):
                     return "As colunas devem ser nomeCompleto e email."
                 
                 rows = []
+                seen_emails = set()
                 for row in reader:
                     if len(row) >= 2:
                         email = row[1].strip()
                         if not email.endswith(self.institutional_domain):
                             self._csv_model.update_data([], [])
                             return f"Apenas serão aceitos eleitores com emails institucionais ({self.institutional_domain})."
+                        
+                        if email in seen_emails:
+                            self._csv_model.update_data([], [])
+                            return f"O email '{email}' está duplicado no CSV. Cada email deve aparecer apenas uma vez."
+                        
+                        seen_emails.add(email)
                         rows.append([row[0].strip(), email])
                 
                 if not rows:
@@ -96,3 +109,40 @@ class CsvController(QObject):
                 f.write(f"nomeCompleto,email\nJoão da Silva,joao{self.institutional_domain}\n")
         except Exception as e:
             print(f"Erro ao salvar template: {e}")
+
+    @Slot(str, str, result=str)
+    def createElection(self, titulo, cedula_json):
+        # 1. Gera a chave pública e o handle no hardware seguro correspondente ao SO atual
+        chave_publica, key_handle = self.crypto_controller.generate_hardware_keys()
+        
+        # 2. Resgata o colégio eleitoral que já foi validado pelo CSV
+        colegio_eleitoral = []
+        for row in self._csv_model._data:
+            nome_completo = row[0]
+            email = row[1]
+            apelido = nome_completo.split()[0] if nome_completo else ""
+            colegio_eleitoral.append({
+                "nomeCompleto": nome_completo,
+                "email": email,
+                "apelido": apelido
+            })
+
+        # 3. Faz o parsing das perguntas da cédula vindas do front-end
+        try:
+            cedula = json.loads(cedula_json)
+        except Exception as e:
+            print(f"Erro ao converter cédula: {e}")
+            cedula = []
+
+        # 4. Monta o payload final conforme a especificação
+        payload = {
+            "titulo": titulo,
+            "chavePublica": chave_publica,
+            "keyHandle": key_handle,
+            "cedula": cedula,
+            "colegio_eleitoral": colegio_eleitoral
+        }
+        
+        # 5. Envia para a API externa usando o serviço
+        resultado = self.api_service.enviar_eleicao(payload)
+        return json.dumps(resultado)
