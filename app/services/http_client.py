@@ -3,8 +3,11 @@ import urllib.request
 import urllib.error
 
 class HttpClient:
-    def post(self, url, payload):
+    def post(self, url, payload, custom_headers=None):
         headers = {'Content-Type': 'application/json'}
+        if custom_headers:
+            headers.update(custom_headers)
+            
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
         

@@ -23,3 +23,11 @@ class CryptoController:
     def decrypt_with_hardware(self, key_handle, encrypted_data):
         """Usa a chave privada armazenada no hardware (referenciada pelo key_handle) para descriptografar os dados."""
         return self.backend.decrypt_data(key_handle, encrypted_data)
+
+    def sign_data(self, key_handle, payload_string):
+        """
+        Usa a chave privada armazenada no hardware (via key_handle) para 
+        assinar digitalmente a string do payload.
+        Retorna a assinatura em Base64.
+        """
+        return self.backend.sign_data(key_handle, payload_string)
