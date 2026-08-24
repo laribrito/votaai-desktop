@@ -7,7 +7,7 @@ Window {
     height: stackView.currentItem ? stackView.currentItem.height : 480
 
     visible: true
-    title: "Design"
+    title: "Vota Aí"
 
     StackView {
         id: stackView
@@ -15,6 +15,24 @@ Window {
         initialItem: Main {
             onCriarEleicaoClicked: {
                 var item = stackView.push("Criacao.qml")
+                if (item) {
+                    item.backClicked.connect(function() { stackView.pop() })
+                }
+            }
+            onIniciarEleicaoClicked: {
+                var item = stackView.push("Iniciar.qml")
+                if (item) {
+                    item.backClicked.connect(function() { stackView.pop() })
+                }
+            }
+            onFecharEleicaoClicked: {
+                var item = stackView.push("Fechar.qml")
+                if (item) {
+                    item.backClicked.connect(function() { stackView.pop() })
+                }
+            }
+            onApurarEleicaoClicked: {
+                var item = stackView.push("Apurar.qml")
                 if (item) {
                     item.backClicked.connect(function() { stackView.pop() })
                 }

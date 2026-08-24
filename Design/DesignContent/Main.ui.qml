@@ -17,6 +17,9 @@ Rectangle {
     color: "#bcbcbc"
 
     signal criarEleicaoClicked()
+    signal iniciarEleicaoClicked()
+    signal fecharEleicaoClicked()
+    signal apurarEleicaoClicked()
 
     Text {
         id: text1
@@ -102,6 +105,13 @@ Rectangle {
             radius: 5
             border.color: "#ababab"
             border.width: 1
+
+            MouseArea {
+                id: mouseAreaIniciarEleicao
+                anchors.fill: parent
+                onClicked: iniciarEleicaoClicked()
+            }
+
             Text {
                 id: text11
                 x: 16
@@ -142,6 +152,13 @@ Rectangle {
             radius: 5
             border.color: "#ababab"
             border.width: 1
+
+            MouseArea {
+                id: mouseAreaFecharEleicao
+                anchors.fill: parent
+                onClicked: fecharEleicaoClicked()
+            }
+
             Text {
                 id: text13
                 x: 16
@@ -182,6 +199,13 @@ Rectangle {
             radius: 5
             border.color: "#ababab"
             border.width: 1
+
+            MouseArea {
+                id: mouseAreaApurarEleicao
+                anchors.fill: parent
+                onClicked: apurarEleicaoClicked()
+            }
+
             Text {
                 id: text15
                 x: 16

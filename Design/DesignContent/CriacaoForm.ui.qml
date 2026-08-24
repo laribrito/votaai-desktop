@@ -53,7 +53,7 @@ Rectangle {
         
         background: Rectangle {
             color: parent.down ? "#999999" : (parent.hovered ? "#aaaaaa" : "transparent")
-            radius: 15
+            radius: 4
         }
         contentItem: Text {
             text: parent.text
