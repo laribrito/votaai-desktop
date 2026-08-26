@@ -6,7 +6,14 @@
         <file>Design/EventListSimulator.qml</file>
         <file>Design/qmldir</file>
         <file>DesignContent/App.qml</file>
-        <file>DesignContent/Criacao.ui.qml</file>
+        <file>DesignContent/Apurar.qml</file>
+        <file>DesignContent/ApurarForm.ui.qml</file>
+        <file>DesignContent/Criacao.qml</file>
+        <file>DesignContent/CriacaoForm.ui.qml</file>
+        <file>DesignContent/Fechar.qml</file>
+        <file>DesignContent/FecharForm.ui.qml</file>
+        <file>DesignContent/Iniciar.qml</file>
+        <file>DesignContent/IniciarForm.ui.qml</file>
         <file>DesignContent/Main.ui.qml</file>
         <file>qtquickcontrols2.conf</file>
     </qresource>

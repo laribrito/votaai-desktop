@@ -1,12 +1,22 @@
 import sys
 from pathlib import Path
+import os
+
+# Disable QML disk cache to ensure fresh loading of UI files
+os.environ["QML_DISABLE_DISK_CACHE"] = "1"
+
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
-import os
 from decouple import config
 
 from app.controllers.csvController import CsvController
+
+import PySide6
+pyside_path = os.path.dirname(PySide6.__file__)
+if hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(pyside_path)
+    os.add_dll_directory(os.path.join(pyside_path, "qml", "QtQuick", "Controls", "Basic"))
 
 if __name__ == "__main__":
     app = QGuiApplication(sys.argv)

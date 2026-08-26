@@ -15,10 +15,10 @@ import QtQuick.Dialogs
 Rectangle {
     width: Constants.width
     height: Constants.height
-    color: "#bcbcbc"
-    
+    color: "#e8e8e8"
+
     id: root
-    
+
     property alias textInput: textInput
     property alias csvInput: csvInput
     property alias browseButton: browseButton
@@ -35,8 +35,8 @@ Rectangle {
     property bool isValidCsv: false
     property string csvErrorMessage: ""
     property bool hasValidQuestion: false
-    
-    signal backClicked()
+
+    signal backClicked
     signal moveQuestionUpClicked(int index)
     signal moveQuestionDownClicked(int index)
     signal questionTextEdited(int index, string text)
@@ -50,7 +50,7 @@ Rectangle {
         width: 30
         height: 30
         text: "←"
-        
+
         background: Rectangle {
             color: parent.down ? "#999999" : (parent.hovered ? "#aaaaaa" : "transparent")
             radius: 4
@@ -63,7 +63,13 @@ Rectangle {
             font.pixelSize: 22
             font.bold: true
         }
-        onClicked: root.backClicked()
+        Connections {
+
+
+            function onClicked() {
+                root.backClicked()
+            }
+        }
     }
 
     Text {
@@ -156,7 +162,7 @@ Rectangle {
         width: 100
         height: 30
         text: qsTr("Procurar...")
-        
+
         background: Rectangle {
             color: parent.down ? "#2b3d4f" : (parent.hovered ? "#3e5770" : "#34495e")
             radius: 4
@@ -184,10 +190,15 @@ Rectangle {
         width: 450
         spacing: 15
         visible: !isValidCsv
-        
+
         Text {
-            text: csvErrorMessage !== "" ? csvErrorMessage : qsTr("Apenas serão aceitos eleitores com emails institucionais (" + (typeof institutionalDomain !== 'undefined' ? institutionalDomain : "@uesc.br") + ")")
-            color: csvInput.text !== "" && csvInput.text !== "Arquivo selecionado é inválido!" ? "#d9534f" : (csvInput.text === "Arquivo selecionado é inválido!" ? "#d9534f" : "#555555")
+            text: csvErrorMessage
+                  !== "" ? csvErrorMessage : qsTr(
+                               "Apenas serão aceitos eleitores com emails institucionais ("
+                               + (typeof institutionalDomain
+                                  !== 'undefined' ? institutionalDomain : "@uesc.br") + ")")
+            color: csvInput.text !== ""
+                   && csvInput.text !== "Arquivo selecionado é inválido!" ? "#d9534f" : (csvInput.text === "Arquivo selecionado é inválido!" ? "#d9534f" : "#555555")
             font.pixelSize: 12
             font.bold: csvInput.text !== ""
             horizontalAlignment: Text.AlignHCenter
@@ -201,7 +212,7 @@ Rectangle {
             width: 180
             height: 30
             text: qsTr("Baixar Modelo CSV")
-            
+
             background: Rectangle {
                 color: parent.down ? "#2b3d4f" : (parent.hovered ? "#3e5770" : "#34495e")
                 radius: 4
@@ -221,7 +232,13 @@ Rectangle {
                 verticalAlignment: Text.AlignVCenter
                 font.pixelSize: 12
             }
-            onClicked: saveFileDialog.open()
+            Connections {
+
+
+                function onClicked() {
+                    saveFileDialog.open()
+                }
+            }
         }
     }
 
@@ -231,22 +248,23 @@ Rectangle {
         width: 450
         spacing: 15
         visible: isValidCsv
-        
+
         Row {
             spacing: 10
             width: parent.width
-            
+
             Text {
-                text: qsTr("Pré-visualização: (" + tableView.rows + (tableView.rows === 1 ? " eleitor)" : " eleitores)"))
+                text: qsTr("Pré-visualização: (" + tableView.rows
+                           + (tableView.rows === 1 ? " eleitor)" : " eleitores)"))
                 font.pixelSize: 12
                 font.weight: Font.Medium
                 anchors.verticalCenter: parent.verticalCenter
             }
-            
+
             Item {
                 width: parent.width - parent.children[0].width - 10
                 height: 25
-                
+
                 TextField {
                     id: searchInput
                     anchors.right: parent.right
@@ -255,7 +273,7 @@ Rectangle {
                     placeholderText: qsTr("Buscar eleitor...")
                     font.pixelSize: 12
                     color: "#333333"
-                    
+
                     background: Rectangle {
                         border.color: "#a0a0a0"
                         border.width: 1
@@ -265,7 +283,7 @@ Rectangle {
                 }
             }
         }
-        
+
         Rectangle {
             width: parent.width
             height: 360
@@ -273,7 +291,7 @@ Rectangle {
             border.width: 1
             radius: 4
             clip: true
-            
+
             HorizontalHeaderView {
                 id: horizontalHeader
                 syncView: tableView
@@ -292,14 +310,11 @@ Rectangle {
                 anchors.top: horizontalHeader.bottom
                 anchors.bottom: parent.bottom
                 anchors.margins: 1
-                
-                model: typeof backend !== 'undefined' && backend ? backend.csvModel : null
+
+                model: typeof backend !== 'undefined'
+                       && backend ? backend.csvModel : null
                 clip: true
-                
-                columnWidthProvider: function (column) {
-                    return tableView.width / 2 - 2;
-                }
-                
+
                 delegate: Rectangle {
                     implicitWidth: 200
                     implicitHeight: 30
@@ -325,7 +340,7 @@ Rectangle {
         width: 180
         height: 30
         text: qsTr("+ Adicionar Pergunta")
-        
+
         background: Rectangle {
             color: parent.down ? "#243342" : (parent.hovered ? "#374d63" : "#2c3e50")
             radius: 4
@@ -362,13 +377,19 @@ Rectangle {
             ListElement {
                 questionText: ""
                 options: [
-                    ListElement { optionText: "" },
-                    ListElement { optionText: "" }
+                    ListElement {
+                        optionText: ""
+                    },
+                    ListElement {
+                        optionText: ""
+                    }
                 ]
             }
         }
 
         delegate: Rectangle {
+            id: questionDelegate
+            property int questionIndex: index
             width: ListView.view.width
             height: 140 + (options.count * 40)
             color: "#f8f8f8"
@@ -413,7 +434,13 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 10
                 }
-                onClicked: root.moveQuestionUpClicked(index)
+                Connections {
+
+
+                    function onClicked() {
+                        root.moveQuestionUpClicked(index)
+                    }
+                }
             }
 
             Button {
@@ -437,7 +464,13 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 10
                 }
-                onClicked: root.moveQuestionDownClicked(index)
+                Connections {
+
+
+                    function onClicked() {
+                        root.moveQuestionDownClicked(index)
+                    }
+                }
             }
 
             Rectangle {
@@ -451,6 +484,7 @@ Rectangle {
                 radius: 4
 
                 TextField {
+                    id: questionTextInput
                     anchors.fill: parent
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
@@ -461,7 +495,13 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                     clip: true
                     background: Item {}
-                    onTextEdited: root.questionTextEdited(index, text)
+                    Connections {
+
+
+                        function onTextEdited() {
+                            root.questionTextEdited(index, questionTextInput.text)
+                        }
+                    }
                 }
             }
 
@@ -490,6 +530,7 @@ Rectangle {
                         radius: 4
 
                         TextField {
+                            id: optionTextInput
                             anchors.fill: parent
                             anchors.leftMargin: 8
                             anchors.rightMargin: 8
@@ -500,7 +541,13 @@ Rectangle {
                             verticalAlignment: Text.AlignVCenter
                             clip: true
                             background: Item {}
-                            onTextEdited: root.optionTextEdited(index, index, text)
+                            Connections {
+
+
+                                function onTextEdited() {
+                                    root.optionTextEdited(questionDelegate.questionIndex, index, optionTextInput.text)
+                                }
+                            }
                         }
                     }
                 }
@@ -509,7 +556,7 @@ Rectangle {
                     text: qsTr("+ Adicionar Opção")
                     width: 140
                     height: 28
-                    
+
                     background: Rectangle {
                         color: parent.down ? "#3d3d3d" : (parent.hovered ? "#5c5c5c" : "#4a4a4a")
                         radius: 4
@@ -530,7 +577,13 @@ Rectangle {
                         font.pixelSize: 11
                     }
 
-                    onClicked: root.addOptionClicked(index)
+                    Connections {
+
+
+                        function onClicked() {
+                            root.addOptionClicked(index)
+                        }
+                    }
                 }
             }
         }
@@ -557,9 +610,9 @@ Rectangle {
         width: 160
         height: 40
         text: qsTr("Criar Eleição")
-        enabled: textInput.text.trim() !== "" && isValidCsv && hasValidQuestion
+        enabled: textInput.text !== "" && isValidCsv && hasValidQuestion
         opacity: enabled ? 1.0 : 0.5
-        
+
         background: Rectangle {
             color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")
             radius: 6

@@ -5,6 +5,12 @@ import QtQuick.Dialogs
 CriacaoForm {
     id: form
     
+    Component.onCompleted: {
+        tableView.columnWidthProvider = function (column) {
+            return tableView.width / 2 - 2;
+        }
+    }
+    
     function validateQuestions() {
         for (var i = 0; i < questionsModel.count; i++) {
             var question = questionsModel.get(i);
@@ -40,7 +46,10 @@ CriacaoForm {
     // Connect FileDialogs
     fileDialog.onAccepted: {
         var path = fileDialog.selectedFile.toString();
-        path = path.replace(/^(file:\/{2})/,"");
+        path = path.replace(/^(file:\/{2})/, "");
+        if (Qt.platform.os === "windows") {
+            path = path.replace(/^\/([a-zA-Z]:)/, "$1");
+        }
         path = decodeURIComponent(path);
         
         var err = backend.validateCsv(path);
@@ -57,7 +66,10 @@ CriacaoForm {
 
     saveFileDialog.onAccepted: {
         var path = saveFileDialog.selectedFile.toString();
-        path = path.replace(/^(file:\/{2})/,"");
+        path = path.replace(/^(file:\/{2})/, "");
+        if (Qt.platform.os === "windows") {
+            path = path.replace(/^\/([a-zA-Z]:)/, "$1");
+        }
         path = decodeURIComponent(path);
         backend.saveTemplate(path);
     }

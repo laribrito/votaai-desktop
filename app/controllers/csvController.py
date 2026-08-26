@@ -4,6 +4,9 @@ from PySide6.QtCore import QObject, Slot, Signal, Property, QAbstractTableModel,
 
 from app.controllers.cryptoController import CryptoController
 from app.services.election_api import ElectionApiService
+from app.services.auth_service import AuthService
+from app.services.device_service import DeviceService
+from app.services.http_client import HttpClient
 
 class CsvTableModel(QAbstractTableModel):
     def __init__(self, data=None, headers=None, parent=None):
@@ -46,7 +49,12 @@ class CsvController(QObject):
         super().__init__()
         self.institutional_domain = institutional_domain
         self.crypto_controller = CryptoController()
-        self.api_service = ElectionApiService()
+        
+        device_service = DeviceService()
+        http_client = HttpClient()
+        auth_service = AuthService(self.crypto_controller, device_service, http_client)
+        
+        self.api_service = ElectionApiService(auth_service)
         self._csv_model = CsvTableModel()
         self._proxy_model = QSortFilterProxyModel()
         self._proxy_model.setSourceModel(self._csv_model)

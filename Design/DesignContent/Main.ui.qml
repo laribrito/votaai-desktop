@@ -12,14 +12,15 @@ import Design
 import QtQuick.Studio.DesignEffects
 
 Rectangle {
+    id: root
     width: Constants.width
     height: Constants.height
-    color: "#bcbcbc"
+    color: "#e8e8e8"
 
-    signal criarEleicaoClicked()
-    signal iniciarEleicaoClicked()
-    signal fecharEleicaoClicked()
-    signal apurarEleicaoClicked()
+    signal criarEleicaoClicked
+    signal iniciarEleicaoClicked
+    signal fecharEleicaoClicked
+    signal apurarEleicaoClicked
 
     Text {
         id: text1
@@ -62,7 +63,12 @@ Rectangle {
             MouseArea {
                 id: mouseAreaCriarEleicao
                 anchors.fill: parent
-                onClicked: criarEleicaoClicked()
+            }
+            Connections {
+                target: mouseAreaCriarEleicao
+                function onClicked() {
+                    root.criarEleicaoClicked()
+                }
             }
 
             Text {
@@ -109,7 +115,12 @@ Rectangle {
             MouseArea {
                 id: mouseAreaIniciarEleicao
                 anchors.fill: parent
-                onClicked: iniciarEleicaoClicked()
+            }
+            Connections {
+                target: mouseAreaIniciarEleicao
+                function onClicked() {
+                    root.iniciarEleicaoClicked()
+                }
             }
 
             Text {
@@ -156,7 +167,12 @@ Rectangle {
             MouseArea {
                 id: mouseAreaFecharEleicao
                 anchors.fill: parent
-                onClicked: fecharEleicaoClicked()
+            }
+            Connections {
+                target: mouseAreaFecharEleicao
+                function onClicked() {
+                    root.fecharEleicaoClicked()
+                }
             }
 
             Text {
@@ -203,7 +219,12 @@ Rectangle {
             MouseArea {
                 id: mouseAreaApurarEleicao
                 anchors.fill: parent
-                onClicked: apurarEleicaoClicked()
+            }
+            Connections {
+                target: mouseAreaApurarEleicao
+                function onClicked() {
+                    root.apurarEleicaoClicked()
+                }
             }
 
             Text {

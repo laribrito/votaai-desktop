@@ -1,3 +1,4 @@
+
 /*
 This is a UI file (.ui.qml) that is intended to be edited in Qt Design Studio only.
 It is supposed to be strictly declarative and only uses a subset of QML. If you edit
@@ -12,14 +13,14 @@ import QtQuick.Studio.DesignEffects
 Rectangle {
     width: Constants.width
     height: Constants.height
-    color: "#bcbcbc"
-    
+    color: "#e8e8e8"
+
     id: root
-    
+
     property alias electionComboBox: electionComboBox
     property alias actionBtn: actionBtn
-    
-    signal backClicked()
+
+    signal backClicked
 
     Button {
         id: backButton
@@ -28,7 +29,7 @@ Rectangle {
         width: 30
         height: 30
         text: "←"
-        
+
         background: Rectangle {
             color: parent.down ? "#999999" : (parent.hovered ? "#aaaaaa" : "transparent")
             radius: 4
@@ -41,7 +42,13 @@ Rectangle {
             font.pixelSize: 22
             font.bold: true
         }
-        onClicked: root.backClicked()
+        Connections {
+
+
+            function onClicked() {
+                root.backClicked()
+            }
+        }
     }
 
     Text {
@@ -77,14 +84,14 @@ Rectangle {
         width: 450
         height: 35
         model: ["Eleição para Diretor 2026", "Representante Discente", "Conselho Universitário"]
-        
+
         background: Rectangle {
             color: "#ffffff"
             radius: 4
             border.color: "#a0a0a0"
             border.width: 1
         }
-        
+
         contentItem: Text {
             leftPadding: 10
             rightPadding: electionComboBox.indicator.width + electionComboBox.spacing
@@ -103,7 +110,7 @@ Rectangle {
         width: 160
         height: 40
         text: qsTr("Apurar Eleição")
-        
+
         background: Rectangle {
             color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")
             radius: 6
