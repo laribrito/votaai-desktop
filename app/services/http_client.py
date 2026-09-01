@@ -26,6 +26,17 @@ class HttpClient:
             with urllib.request.urlopen(req) as response:
                 result = response.read().decode('utf-8')
                 return {"status": "sucesso", "dados": result}
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8')
+            try:
+                error_json = json.loads(error_body)
+                mensagem = error_json.get('error', error_body)
+            except Exception:
+                mensagem = error_body
+            return {"status": "erro", "mensagem": mensagem}
         except urllib.error.URLError as e:
-            print(f"Erro na requisição POST para {url}: {e}")
+            print(f"Erro de conexão na requisição POST para {url}: {e}")
+            return {"status": "erro", "mensagem": str(e.reason if hasattr(e, 'reason') else e)}
+        except Exception as e:
+            print(f"Erro inesperado na requisição POST para {url}: {e}")
             return {"status": "erro", "mensagem": str(e)}
