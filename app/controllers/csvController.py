@@ -154,3 +154,15 @@ class CsvController(QObject):
         # 5. Envia para a API externa usando o serviço
         resultado = self.api_service.enviar_eleicao(payload)
         return json.dumps(resultado)
+
+    @Slot(result=str)
+    def testConnection(self):
+        try:
+            http_client = HttpClient()
+            payload = {"ping": "Hello from Desktop"}
+            # The backend is expecting the request to the local ping-desktop endpoint
+            response = http_client.post("http://127.0.0.1:8000/api/ping-desktop/", payload)
+            return json.dumps(response, ensure_ascii=False, indent=2)
+        except Exception as e:
+            return f"Erro ao conectar: {str(e)}"
+

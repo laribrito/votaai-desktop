@@ -37,6 +37,9 @@ Window {
                     item.backClicked.connect(function() { stackView.pop() })
                 }
             }
+            onTestConnectionClicked: {
+                testResult = backend.testConnection()
+            }
         }
     }
 }
