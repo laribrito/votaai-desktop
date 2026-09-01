@@ -1,12 +1,23 @@
 import json
 import urllib.request
 import urllib.error
+from app.services.encryption_service import EncryptionService
 
 class HttpClient:
+    def __init__(self):
+        self.encryption_service = EncryptionService()
+
     def post(self, url, payload, custom_headers=None):
         headers = {'Content-Type': 'application/json'}
         if custom_headers:
             headers.update(custom_headers)
+            
+        # Criptografa o payload para todas as requisições (como solicitado pelo usuário)
+        try:
+            payload = self.encryption_service.encrypt_payload(payload)
+        except Exception as e:
+            print(f"Erro ao criptografar o payload: {e}")
+            return {"status": "erro", "mensagem": "Erro interno de criptografia antes do envio."}
             
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
