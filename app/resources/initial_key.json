@@ -1,0 +1,6 @@
+{
+    "Provider": "Microsoft Platform Crypto Provider",
+    "PublicKeyBase64": "UlNBMQAIAAADAAAAAAEAAAAAAAAAAAAAAQABr+xlpeNsmlRa2/eIjjv62xWr0AbO5GAuTc4FRJczZqHrERqNKQWw/uRsvFn+GEDFaUkkrD/EIhdfoDBsMFFvbrA2Lu9FmqjeB3BYa4NIyNN2s0M6RwHLUhm2DuGuNKKSBQnz14jqmSFMRLV9/nKawE/2nsiMhczXB9bhacBtuzVKZe3Me1LAwiYzvy0MvFC8f3tPj1SNeGKU+L/K5kr+dGnlv1VteJfO/T8VZC0NF+rWHWVhZfm0EqeegewPZWBcRRxvvqnXQnVv/yy0NnNrAl9ZKSDf/EzuvbitkjT3L4nmZVq/umUkOaEjPcl57qGvhCIaCr7YPvjQDmGACXuneQ==",
+    "Algorithm": "RSA",
+    "KeyName": "VotaAI_SecureKey_1"
+}
