@@ -2,27 +2,54 @@ import subprocess
 import sys
 import os
 
-# Caminho para o executavel do cz no .venv local
-VENV_CZ = os.path.join(os.path.dirname(__file__), ".venv", "bin", "cz")
+# Garante que o GitHub CLI (gh) esteja no PATH caso esteja instalado nos locais padrao
+GH_PATHS = [
+    r"C:\Program Files\GitHub CLI",
+    r"C:\Program Files (x86)\GitHub CLI",
+    os.path.expanduser(r"~\AppData\Local\Programs\GitHub CLI\bin"),
+    os.path.expanduser(r"~\scoop\shims"),
+]
+for path_dir in GH_PATHS:
+    if os.path.exists(path_dir) and path_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = path_dir + os.pathsep + os.environ.get("PATH", "")
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+def safe_print(text):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or "utf-8"
+        print(text.encode(encoding, errors="replace").decode(encoding))
+
+# Caminho para o executavel Python no .venv local ou do sistema para rodar commitizen
 def get_cz_command():
-    if os.path.exists(VENV_CZ):
-        return f'"{VENV_CZ}"'
-    return "cz"
+    for venv_python in [
+        os.path.join(os.path.dirname(__file__), ".venv", "Scripts", "python.exe"),
+        os.path.join(os.path.dirname(__file__), ".venv", "bin", "python"),
+    ]:
+        if os.path.exists(venv_python):
+            return f'"{venv_python}" -m commitizen'
+    return f'"{sys.executable}" -m commitizen'
 
 def run_command(command, description):
-    print(f"\n[>] Executando: {description}...")
+    safe_print(f"\n[>] Executando: {description}...")
     try:
-        # Executa no shell (necessário pois passamos o comando como string completa)
-        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True, encoding='utf-8', errors="replace")
+        # Executa no PowerShell se for Windows
+        shell = True if os.name == 'nt' else False
+        result = subprocess.run(command, shell=shell, check=True, text=True, capture_output=True, encoding='utf-8', errors="replace")
         if result.stdout:
-            print(result.stdout.strip())
-        print(f"[+] Sucesso: {description}")
+            safe_print(result.stdout.strip())
+        safe_print(f"[+] Sucesso: {description}")
     except subprocess.CalledProcessError as e:
-        print(f"[-] Erro em '{description}':")
+        safe_print(f"[-] Erro em '{description}':")
         error_msg = e.stderr.strip() if e.stderr else str(e)
-        encoding = sys.stdout.encoding or 'utf-8'
-        print(error_msg.encode(encoding, errors='replace').decode(encoding))
+        safe_print(error_msg)
         sys.exit(1)
 
 def pre_merge():
@@ -32,8 +59,8 @@ def pre_merge():
     # 1. Verifica se existem arquivos modificados e pendentes de commit
     run_command("git status -s", "Verificando status do repositório")
     
-    # 2. Testes automatizados (ainda não implementados neste projeto PySide6)
-    # run_command("python -m unittest discover", "Executando testes")
+    # 2. Testes automatizados (Django)
+    run_command("python manage.py test", "Executando testes automatizados do Django")
 
 def create_pr(flag="--fill"):
     print("\n=== CREATING PULL REQUEST ===")
@@ -76,7 +103,7 @@ def sync_main():
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in ["pre", "pr", "sync", "clean"]:
         print("Uso: python run_commands.py [pre|pr|sync|clean] [--web]")
-        print("  pre   - Executa testes, adiciona arquivos e realiza commit da refatoração (bump)")
+        print("  pre   - Executa testes automatizados do Django e checa status do repositório")
         print("  pr    - Cria um Pull Request no GitHub de forma automática com os commits (use --web para abrir no navegador)")
         print("  clean - Volta para a main, atualiza e deleta a branch local mesclada")
         print("  sync  - Busca atualizações da main e tenta mesclar localmente para resolver conflitos")
