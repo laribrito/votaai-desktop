@@ -3,16 +3,16 @@ import QtQuick.Controls
 import Design
 
 Window {
-    width: stackView.currentItem ? stackView.currentItem.width : 640
-    height: stackView.currentItem ? stackView.currentItem.height : 480
+    id: appWindow
+    width: stackView.currentItem ? stackView.currentItem.width : Constants.width
+    height: stackView.currentItem ? stackView.currentItem.height : Constants.height
 
     visible: true
     title: "Vota Aí"
 
-    StackView {
-        id: stackView
-        anchors.fill: parent
-        initialItem: Main {
+    Component {
+        id: mainComponent
+        Main {
             onCriarEleicaoClicked: {
                 var item = stackView.push("Criacao.qml")
                 if (item) {
@@ -37,9 +37,24 @@ Window {
                     item.backClicked.connect(function() { stackView.pop() })
                 }
             }
-            onTestConnectionClicked: {
-                testResult = backend.testConnection()
+        }
+    }
+
+    Component {
+        id: cadastroComponent
+        Cadastro {
+            onCadastroConcluido: {
+                // Cadastro concluído
+            }
+            onIrParaMainClicked: {
+                stackView.replace(mainComponent)
             }
         }
+    }
+
+    StackView {
+        id: stackView
+        anchors.fill: parent
+        initialItem: cadastroComponent
     }
 }

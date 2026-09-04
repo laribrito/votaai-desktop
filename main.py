@@ -11,6 +11,7 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from decouple import config
 
 from app.controllers.csvController import CsvController
+from app.controllers.authController import AuthController
 
 import PySide6
 pyside_path = os.path.dirname(PySide6.__file__)
@@ -31,6 +32,9 @@ if __name__ == "__main__":
     
     backend = CsvController(institutional_domain)
     engine.rootContext().setContextProperty("backend", backend)
+    
+    auth_controller = AuthController()
+    engine.rootContext().setContextProperty("authController", auth_controller)
     
     # Adicionando o caminho de importação das pastas do projeto QML (necessário pro Qt encontrar a pasta design)
     qml_dir = Path(__file__).parent / "Design"

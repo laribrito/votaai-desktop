@@ -6,3 +6,5 @@
 **/*.pyd
 app/resources/client_key.json
 app/resources/initial_key.json
+app/resources/totp_qr.png
+app/resources/registration_info.json

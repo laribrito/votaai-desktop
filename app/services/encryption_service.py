@@ -91,6 +91,11 @@ class EncryptionService:
 
         return client_info, client_pub_pem
 
+    def reload_client_keys(self):
+        """Recarrega os metadados e chave pública do cliente."""
+        self.client_key_info, self.client_public_key_pem = self._load_or_generate_client_hardware_keys()
+        return self.client_key_info, self.client_public_key_pem
+
     def encrypt_payload(self, payload_dict):
         """
         Criptografa o payload usando AES-GCM (Chave simétrica)

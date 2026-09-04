@@ -16,3 +16,5 @@ shiboken6==6.11.2
 six==1.17.0
 cryptography>=41.0.0
 commitizen>=4.18.0
+qrcode>=8.0
+pillow>=10.0
