@@ -17,10 +17,13 @@ Rectangle {
     height: Constants.height
     color: "#e8e8e8"
 
+    property string testResult: ""
+
     signal criarEleicaoClicked
     signal iniciarEleicaoClicked
     signal fecharEleicaoClicked
     signal apurarEleicaoClicked
+    signal testConnectionClicked
 
     Text {
         id: text1
@@ -258,5 +261,46 @@ Rectangle {
                 fillMode: Image.PreserveAspectFit
             }
         }
+    }
+
+    Rectangle {
+        id: testConnectionBtn
+        x: 45
+        y: 400
+        width: 260
+        height: 40
+        color: "#2196F3"
+        radius: 5
+        
+        Text {
+            anchors.centerIn: parent
+            text: qsTr("Testar Conexão Híbrida")
+            color: "white"
+            font.pixelSize: 14
+            font.weight: Font.Medium
+        }
+        
+        MouseArea {
+            id: mouseAreaTestConnection
+            anchors.fill: parent
+        }
+        Connections {
+            target: mouseAreaTestConnection
+            function onClicked() {
+                root.testConnectionClicked()
+            }
+        }
+    }
+
+    Text {
+        id: testResultText
+        x: 45
+        y: 450
+        width: 550
+        height: 200
+        wrapMode: Text.WordWrap
+        text: root.testResult
+        color: "#333333"
+        font.pixelSize: 12
     }
 }
