@@ -97,6 +97,7 @@ Rectangle {
 
             TextField {
                 id: emailInput
+                enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
@@ -131,6 +132,7 @@ Rectangle {
 
             TextField {
                 id: passwordInput
+                enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
@@ -166,6 +168,7 @@ Rectangle {
 
             TextField {
                 id: confirmPasswordInput
+                enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
@@ -247,7 +250,8 @@ Rectangle {
             width: 220
             height: 40
             text: root.isLoading ? qsTr("Criando Chave...") : qsTr("Criar Chave e Cadastrar")
-            enabled: !root.isLoading
+            enabled: !root.isLoading && !root.isAlreadyRegistered
+            visible: !root.isAlreadyRegistered
 
             background: Rectangle {
                 color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")
@@ -460,7 +464,8 @@ Rectangle {
             width: 200
             height: 40
             text: root.isLoading ? qsTr("Validando...") : qsTr("Confirmar e Ativar")
-            enabled: !root.isLoading
+            enabled: !root.isLoading && !root.isAlreadyRegistered
+            visible: !root.isAlreadyRegistered
 
             background: Rectangle {
                 color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")

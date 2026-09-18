@@ -10,6 +10,7 @@ from decouple import config
 
 from app.controllers.native import cng_windows
 from app.services.http_client import HttpClient
+from app.services.device_service import DeviceService
 import qrcode
 
 class AuthController(QObject):
@@ -74,6 +75,12 @@ class AuthController(QObject):
         if len(senha) < 8:
             return json.dumps({"status": "erro", "mensagem": "A senha deve conter no mínimo 8 caracteres com letras, números e símbolos."})
 
+        if self.isRegistered:
+            return json.dumps({
+                "status": "erro",
+                "mensagem": f"Esta máquina já possui um administrador cadastrado ({self.registeredEmail})."
+            })
+
         try:
             # 1. Gera ou atualiza chave no hardware TPM da máquina
             key_info = cng_windows.generate_rsa_key("VotaAI_DesktopClient_Key")
@@ -86,10 +93,12 @@ class AuthController(QObject):
 
             # 2. Envia para o backend (o HttpClient automaticamente envia o envelope cifrado híbrido)
             url = f"{self.api_base_url}/api/admin/pre-cadastro/"
+            device_id = DeviceService().get_device_id()
             payload = {
                 "email": email,
                 "senha": senha,
-                "chave_publica_maquina": client_pub_pem
+                "chave_publica_maquina": client_pub_pem,
+                "usuario_maquina": device_id
             }
 
             response = self.http_client.post(url, payload)
@@ -201,6 +210,7 @@ class AuthController(QObject):
             reg_info = {
                 "is_registered": True,
                 "email": email,
+                "usuario_maquina": DeviceService().get_device_id(),
                 "confirmed_at": datetime.now().isoformat()
             }
             with open(self._get_registration_path(), 'w', encoding='utf-8') as f:

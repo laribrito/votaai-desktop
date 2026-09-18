@@ -26,6 +26,10 @@ CadastroForm {
     // Ação: Submeter Etapa 1 (Criar Chave e Iniciar Cadastro)
     onSubmitPreCadastroClicked: {
         errorMessage = ""
+        if (isAlreadyRegistered) {
+            errorMessage = "Esta máquina já possui um administrador vinculado (" + registeredEmailText + ")."
+            return
+        }
         var email = emailInput.text.trim()
         var senha = passwordInput.text
         var confSenha = confirmPasswordInput.text
