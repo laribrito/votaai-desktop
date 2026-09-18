@@ -19,6 +19,7 @@ class AuthController(QObject):
     com provisionamento de chave RSA segura no hardware TPM e segundo fator TOTP.
     """
     registrationStatusChanged = Signal()
+    authenticationStatusChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -26,6 +27,8 @@ class AuthController(QObject):
         self.api_base_url = config('API_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')
         self.resources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
         os.makedirs(self.resources_dir, exist_ok=True)
+        self._is_authenticated = False
+        self._auth_token = None
 
     def _get_registration_path(self):
         return os.path.join(self.resources_dir, 'registration_info.json')
@@ -44,6 +47,14 @@ class AuthController(QObject):
     def isRegistered(self):
         data = self._read_registration_data()
         return bool(data.get("is_registered", False))
+
+    @Property(bool, notify=authenticationStatusChanged)
+    def isAuthenticated(self):
+        return self._is_authenticated
+
+    @Property(str, notify=authenticationStatusChanged)
+    def authToken(self):
+        return self._auth_token or ""
 
     @Property(str, notify=registrationStatusChanged)
     def registeredEmail(self):
@@ -293,5 +304,100 @@ class AuthController(QObject):
             except Exception as e:
                 print(f"Erro ao remover registration_info.json: {e}")
                 return False
+        self._is_authenticated = False
+        self._auth_token = None
+        self.authenticationStatusChanged.emit()
         self.registrationStatusChanged.emit()
         return True
+
+    @Slot(str, str, result=str)
+    def login(self, senha: str, codigo_totp: str) -> str:
+        """
+        Autentica o administrador registrado com dois fatores (2FA):
+        1. Valida senha de acesso
+        2. Valida código TOTP de 6 dígitos
+        3. Assina o desafio no chip de hardware TPM da máquina
+        4. Envia para POST /api/auth/login/
+        """
+        senha = (senha or '').strip()
+        codigo_totp = (codigo_totp or '').strip()
+
+        if not senha:
+            return json.dumps({"status": "erro", "mensagem": "A senha é obrigatória."})
+
+        if not codigo_totp:
+            return json.dumps({"status": "erro", "mensagem": "O código TOTP de 6 dígitos é obrigatório."})
+
+        if len(codigo_totp) != 6 or not codigo_totp.isdigit():
+            return json.dumps({"status": "erro", "mensagem": "O código TOTP deve conter exatamente 6 dígitos numéricos."})
+
+        email = self.registeredEmail
+        if not email:
+            return json.dumps({"status": "erro", "mensagem": "Nenhum administrador registrado nesta máquina."})
+
+        try:
+            # 1. Gera assinatura digital RSA da máquina com o código TOTP
+            payload_to_sign = f"{email}:{codigo_totp}"
+            try:
+                assinatura = cng_windows.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
+            except Exception as se:
+                assinatura = ""
+                print(f"Aviso de assinatura TPM: {se}")
+
+            url = f"{self.api_base_url}/api/auth/login/"
+            payload = {
+                "username": email,
+                "password": senha,
+                "codigo_totp": codigo_totp,
+                "assinatura": assinatura,
+                "usuario_maquina": self.registeredDeviceId
+            }
+
+            response = self.http_client.post(url, payload)
+
+            if response.get("status") != "sucesso":
+                msg = response.get("mensagem", "Falha na autenticação.")
+                if isinstance(msg, dict):
+                    if "detail" in msg:
+                        detail = str(msg["detail"])
+                        if "Invalid username or password" in detail:
+                            msg = "Senha incorreta. Por favor, tente novamente."
+                        else:
+                            msg = detail
+                    elif "non_field_errors" in msg:
+                        msg = " ".join(msg["non_field_errors"])
+                    else:
+                        parts = []
+                        for k, v in msg.items():
+                            if isinstance(v, list):
+                                parts.append(f"{'; '.join(str(x) for x in v)}")
+                            else:
+                                parts.append(f"{v}")
+                        msg = " ".join(parts)
+                return json.dumps({"status": "erro", "mensagem": str(msg)})
+
+            dados = response.get("dados", {})
+            if isinstance(dados, str):
+                try:
+                    dados = json.loads(dados)
+                except Exception:
+                    dados = {"token": dados}
+
+            token = dados.get("token") or dados.get("access") or ""
+            self._auth_token = token
+            self._is_authenticated = True
+            self.authenticationStatusChanged.emit()
+
+            return json.dumps({
+                "status": "sucesso",
+                "mensagem": "Autenticação em dois fatores realizada com sucesso!",
+                "token": token
+            })
+        except Exception as e:
+            return json.dumps({"status": "erro", "mensagem": f"Erro de conexão ao autenticar: {str(e)}"})
+
+    @Slot()
+    def logout(self):
+        self._is_authenticated = False
+        self._auth_token = None
+        self.authenticationStatusChanged.emit()
