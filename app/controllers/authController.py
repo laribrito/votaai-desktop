@@ -50,6 +50,63 @@ class AuthController(QObject):
         data = self._read_registration_data()
         return data.get("email", "")
 
+    @Property(str, notify=registrationStatusChanged)
+    def registeredUserName(self):
+        data = self._read_registration_data()
+        if data.get("nome"):
+            return data["nome"]
+        email = data.get("email", "")
+        if not email:
+            return ""
+        try:
+            for csv_name in ['valido.csv', 'invalido4.csv']:
+                csv_path = os.path.join(os.path.dirname(__file__), '..', '..', csv_name)
+                if os.path.exists(csv_path):
+                    import csv
+                    with open(csv_path, 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            if len(row) >= 2 and row[1].strip() == email:
+                                return row[0].strip()
+        except Exception:
+            pass
+        return email.split("@")[0]
+
+    @Property(str, notify=registrationStatusChanged)
+    def registeredDeviceId(self):
+        data = self._read_registration_data()
+        return data.get("usuario_maquina", "")
+
+    @Property(str, notify=registrationStatusChanged)
+    def registeredDate(self):
+        data = self._read_registration_data()
+        raw_date = data.get("confirmed_at", "")
+        if raw_date:
+            try:
+                dt = datetime.fromisoformat(raw_date)
+                return dt.strftime("%d/%m/%Y às %H:%M")
+            except Exception:
+                return raw_date
+        return ""
+
+    @Property(str, notify=registrationStatusChanged)
+    def registeredUserInitials(self):
+        data = self._read_registration_data()
+        email = data.get("email", "")
+        if not email:
+            return "AD"
+        name_part = email.split("@")[0]
+        letters = [c.upper() for c in name_part if c.isalpha()]
+        if len(letters) >= 2:
+            return "".join(letters[:2])
+        elif len(letters) == 1:
+            return letters[0]
+        return "AD"
+
+    @Property(str, notify=registrationStatusChanged)
+    def registeredRole(self):
+        return "Administrador"
+
     @Slot(str)
     def copyToClipboard(self, text: str):
         clipboard = QGuiApplication.clipboard()
