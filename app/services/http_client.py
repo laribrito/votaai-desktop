@@ -35,14 +35,23 @@ class HttpClient:
             error_body = e.read().decode('utf-8')
             try:
                 try:
-                    error_body = self.encryption_service.decrypt_response(error_body)
+                    decrypted = self.encryption_service.decrypt_response(error_body)
+                    error_body = decrypted
                 except Exception:
                     pass
+
                 if isinstance(error_body, str):
-                    error_json = json.loads(error_body)
+                    try:
+                        error_json = json.loads(error_body)
+                    except Exception:
+                        error_json = error_body
                 else:
                     error_json = error_body
-                mensagem = error_json.get('error', error_body) if isinstance(error_json, dict) else error_body
+
+                if isinstance(error_json, dict):
+                    mensagem = error_json
+                else:
+                    mensagem = str(error_body)
             except Exception:
                 mensagem = error_body
             return {"status": "erro", "mensagem": mensagem}
