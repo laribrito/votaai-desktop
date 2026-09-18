@@ -10,6 +10,14 @@ Window {
     visible: true
     title: "Vota Aí"
 
+    function navigateTo(page) {
+        return stackView.push(page)
+    }
+
+    function popPage() {
+        return stackView.pop()
+    }
+
     Component {
         id: mainComponent
         Main {
@@ -54,7 +62,20 @@ Window {
 
     StackView {
         id: stackView
+        objectName: "stackView"
         anchors.fill: parent
-        initialItem: cadastroComponent
+        initialItem: (typeof authController !== 'undefined' && authController && authController.isRegistered) ? mainComponent : cadastroComponent
+    }
+
+    ResponsibleUserBadge {
+        id: responsibleUserBadge
+        objectName: "responsibleUserBadge"
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 47
+        anchors.rightMargin: 45
+        z: 999
+        visible: (typeof authController !== 'undefined' && authController && authController.isRegistered)
     }
 }
+
