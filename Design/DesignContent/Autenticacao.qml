@@ -8,7 +8,7 @@ AutenticacaoForm {
 
     Component.onCompleted: {
         if (typeof authController !== 'undefined' && authController) {
-            registeredEmailText = authController.registeredEmail
+            registeredEmailText = authController.registeredEmailMasked
             registeredNameText = authController.registeredUserName
         }
     }
@@ -17,7 +17,7 @@ AutenticacaoForm {
         target: (typeof authController !== 'undefined' && authController) ? authController : null
         function onRegistrationStatusChanged() {
             if (authController) {
-                registeredEmailText = authController.registeredEmail
+                registeredEmailText = authController.registeredEmailMasked
                 registeredNameText = authController.registeredUserName
             }
         }

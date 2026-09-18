@@ -62,6 +62,20 @@ class AuthController(QObject):
         return data.get("email", "")
 
     @Property(str, notify=registrationStatusChanged)
+    def registeredEmailMasked(self):
+        """Retorna o e-mail com a parte local parcialmente mascarada para exibição na tela de login.
+        Exemplo: lbsantos1.cic@uesc.br -> l*******1@uesc.br"""
+        email = self.registeredEmail
+        if not email or "@" not in email:
+            return email
+        local, domain = email.split("@", 1)
+        if len(local) <= 2:
+            masked_local = local[0] + "*"
+        else:
+            masked_local = local[0] + "*" * (len(local) - 2) + local[-1]
+        return f"{masked_local}@{domain}"
+
+    @Property(str, notify=registrationStatusChanged)
     def registeredUserName(self):
         data = self._read_registration_data()
         if data.get("nome"):
