@@ -150,11 +150,20 @@ class AuthController(QObject):
             })
 
         try:
-            # 1. Gera ou atualiza chave no hardware TPM da máquina
-            key_info = cng_windows.generate_rsa_key("VotaAI_DesktopClient_Key")
+            # 1. Carrega chave existente no hardware TPM da máquina ou gera uma nova caso não exista
             client_key_path = os.path.join(self.resources_dir, 'client_key.json')
-            with open(client_key_path, 'w', encoding='utf-8') as f:
-                json.dump(key_info, f, indent=4)
+            key_info = None
+            if os.path.exists(client_key_path):
+                try:
+                    with open(client_key_path, 'r', encoding='utf-8') as f:
+                        key_info = json.load(f)
+                except Exception:
+                    key_info = None
+
+            if not key_info or not key_info.get("PublicKeyBase64"):
+                key_info = cng_windows.generate_rsa_key("VotaAI_DesktopClient_Key")
+                with open(client_key_path, 'w', encoding='utf-8') as f:
+                    json.dump(key_info, f, indent=4)
 
             # Recarrega a chave pública no serviço de criptografia do http_client
             _, client_pub_pem = self.http_client.encryption_service.reload_client_keys()
@@ -357,22 +366,39 @@ class AuthController(QObject):
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem", "Falha na autenticação.")
+                if isinstance(msg, str):
+                    try:
+                        msg = json.loads(msg)
+                    except Exception:
+                        pass
+
                 if isinstance(msg, dict):
-                    if "detail" in msg:
+                    if "codigo_totp" in msg:
+                        totp_err = msg["codigo_totp"]
+                        msg = totp_err if isinstance(totp_err, str) else "; ".join(str(x) for x in totp_err)
+                    elif "assinatura" in msg:
+                        sig_err = msg["assinatura"]
+                        msg = sig_err if isinstance(sig_err, str) else "; ".join(str(x) for x in sig_err)
+                    elif "usuario_maquina" in msg:
+                        dev_err = msg["usuario_maquina"]
+                        msg = dev_err if isinstance(dev_err, str) else "; ".join(str(x) for x in dev_err)
+                    elif "detail" in msg:
                         detail = str(msg["detail"])
                         if "Invalid username or password" in detail:
                             msg = "Senha incorreta. Por favor, tente novamente."
                         else:
                             msg = detail
+                    elif "error" in msg:
+                        msg = str(msg["error"])
                     elif "non_field_errors" in msg:
-                        msg = " ".join(msg["non_field_errors"])
+                        msg = " ".join(str(x) for x in msg["non_field_errors"])
                     else:
                         parts = []
                         for k, v in msg.items():
                             if isinstance(v, list):
-                                parts.append(f"{'; '.join(str(x) for x in v)}")
+                                parts.append(f"{k.capitalize()}: {'; '.join(str(x) for x in v)}")
                             else:
-                                parts.append(f"{v}")
+                                parts.append(f"{k.capitalize()}: {v}")
                         msg = " ".join(parts)
                 return json.dumps({"status": "erro", "mensagem": str(msg)})
 
