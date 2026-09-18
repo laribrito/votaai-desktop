@@ -49,13 +49,22 @@ Window {
     }
 
     Component {
+        id: autenticacaoComponent
+        Autenticacao {
+            onLoginSucesso: {
+                stackView.replace(mainComponent)
+            }
+        }
+    }
+
+    Component {
         id: cadastroComponent
         Cadastro {
             onCadastroConcluido: {
                 // Cadastro concluído
             }
             onIrParaMainClicked: {
-                stackView.replace(mainComponent)
+                stackView.replace(autenticacaoComponent)
             }
         }
     }
@@ -64,7 +73,9 @@ Window {
         id: stackView
         objectName: "stackView"
         anchors.fill: parent
-        initialItem: (typeof authController !== 'undefined' && authController && authController.isRegistered) ? mainComponent : cadastroComponent
+        initialItem: (typeof authController !== 'undefined' && authController && authController.isRegistered) 
+                     ? (authController.isAuthenticated ? mainComponent : autenticacaoComponent) 
+                     : cadastroComponent
     }
 
     ResponsibleUserBadge {
