@@ -368,7 +368,7 @@ Rectangle {
         // Lado Direito: Campo TOTP
         Text {
             id: labelTotp
-            x: 285
+            x: 360
             y: 138
             text: qsTr("Código de 6 dígitos gerado pelo aplicativo")
             font.pixelSize: 12
@@ -376,7 +376,7 @@ Rectangle {
         }
 
         Rectangle {
-            x: 285
+            x: 360
             y: 163
             width: 210
             height: 35
@@ -404,9 +404,9 @@ Rectangle {
         }
 
         Text {
-            x: 285
+            x: 360
             y: 215
-            width: 340
+            width: 380
             text: qsTr("Abra o Google Authenticator ou Microsoft Authenticator em seu celular para escanear o QR Code e digitar o código gerado.")
             font.pixelSize: 12
             font.weight: Font.Light
@@ -416,9 +416,9 @@ Rectangle {
 
         Text {
             id: errorStep2
-            x: 285
+            x: 360
             y: 280
-            width: 340
+            width: 380
             text: root.errorMessage
             color: "#d9534f"
             font.pixelSize: 12
