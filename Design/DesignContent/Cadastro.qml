@@ -22,7 +22,7 @@ CadastroForm {
             registeredEmailText = authController.registeredEmail
         }
 
-        function onPreCadastroFinished(resStr) {
+        function onPreRegistrationFinished(resStr) {
             isLoading = false
             try {
                 var res = JSON.parse(resStr)

@@ -11,7 +11,7 @@ from decouple import config
 
 from app.controllers.cryptoController import CryptoController
 from app.services.http_client import HttpClient
-from app.services.device_service import DeviceService
+from app.controllers.deviceController import DeviceController
 import qrcode
 
 class AuthController(QObject):
@@ -22,7 +22,7 @@ class AuthController(QObject):
     """
     registrationStatusChanged = Signal()
     authenticationStatusChanged = Signal()
-    preCadastroFinished = Signal(str)
+    preRegistrationFinished = Signal(str)
     confirmarPreCadastroFinished = Signal(str)
     loginFinished = Signal(str)
     isLoadingChanged = Signal()
@@ -30,7 +30,6 @@ class AuthController(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.http_client = HttpClient()
-        self.api_base_url = config('API_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')
         self.resources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
         os.makedirs(self.resources_dir, exist_ok=True)
         self._is_authenticated = False
@@ -154,16 +153,16 @@ class AuthController(QObject):
         if clipboard:
             clipboard.setText(text)
 
-    def _execute_iniciar_pre_cadastro(self, email: str, senha: str) -> str:
+    def _execute_start_pre_registration(self, email: str, password: str) -> str:
         """Execução síncrona do passo 1 do fluxo."""
         email = (email or '').strip()
-        senha = (senha or '').strip()
+        password = (password or '').strip()
 
         if not email:
             return json.dumps({"status": "erro", "mensagem": "O e-mail é obrigatório."})
-        if not senha:
+        if not password:
             return json.dumps({"status": "erro", "mensagem": "A senha é obrigatória."})
-        if len(senha) < 8:
+        if len(password) < 8:
             return json.dumps({"status": "erro", "mensagem": "A senha deve conter no mínimo 8 caracteres com letras, números e símbolos."})
 
         if self.isRegistered:
@@ -193,19 +192,16 @@ class AuthController(QObject):
             _, client_pub_pem = self.http_client.encryption_service.reload_client_keys()
 
             # 2. Envia para o backend (o HttpClient automaticamente envia o envelope cifrado híbrido)
-            url = f"{self.api_base_url}/api/admin/pre-cadastro/"
-            device_id = DeviceService().get_device_id()
+            endpoint = "/api/admin/pre-cadastro/"
+            device_id = DeviceController().get_device_id()
             payload = {
                 "email": email,
-                "senha": senha,
-                "password": senha,
-                "chave_publica_maquina": client_pub_pem,
+                "password": password,
                 "machine_public_key": client_pub_pem,
-                "usuario_maquina": device_id,
                 "device_id": device_id
             }
 
-            response = self.http_client.post(url, payload)
+            response = self.http_client.post(endpoint, payload)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem", "Erro ao iniciar pré-cadastro no servidor.")
@@ -264,20 +260,20 @@ class AuthController(QObject):
             return json.dumps({"status": "erro", "mensagem": f"Falha na operação: {str(e)}"})
 
     @Slot(str, str)
-    def iniciarPreCadastro(self, email: str, senha: str):
+    def iniciarPreCadastro(self, email: str, password: str):
         """
         Dispara o início do pré-cadastro em segundo plano (assíncrono).
-        Emite o sinal preCadastroFinished(resJson) ao terminar.
+        Emite o sinal preRegistrationFinished(resJson) ao terminar.
         """
         self._set_loading(True)
         def _worker():
             try:
-                res = self._execute_iniciar_pre_cadastro(email, senha)
+                res = self._execute_start_pre_registration(email, password)
             except Exception as e:
                 res = json.dumps({"status": "erro", "mensagem": f"Falha na operação: {str(e)}"})
             finally:
                 self._set_loading(False)
-            self.preCadastroFinished.emit(res)
+            self.preRegistrationFinished.emit(res)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -300,7 +296,7 @@ class AuthController(QObject):
             assinatura = crypto_backend.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
 
             # 2. Envia para o backend
-            url = f"{self.api_base_url}/api/admin/pre-cadastro/confirmar/"
+            endpoint = "/api/admin/pre-cadastro/confirmar/"
             payload = {
                 "email": email,
                 "totp_code": codigo_totp,
@@ -309,7 +305,7 @@ class AuthController(QObject):
                 "assinatura": assinatura
             }
 
-            response = self.http_client.post(url, payload)
+            response = self.http_client.post(endpoint, payload)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem", "Código TOTP inválido ou falha de validação.")
@@ -328,7 +324,7 @@ class AuthController(QObject):
             reg_info = {
                 "is_registered": True,
                 "email": email,
-                "usuario_maquina": DeviceService().get_device_id(),
+                "usuario_maquina": DeviceController().get_device_id(),
                 "confirmed_at": datetime.now().isoformat()
             }
             with open(self._get_registration_path(), 'w', encoding='utf-8') as f:
@@ -406,7 +402,7 @@ class AuthController(QObject):
                 assinatura = ""
                 print(f"Aviso de assinatura TPM: {se}")
 
-            url = f"{self.api_base_url}/api/auth/login/"
+            endpoint = "/api/auth/login/"
             payload = {
                 "username": email,
                 "password": senha,
@@ -418,7 +414,7 @@ class AuthController(QObject):
                 "usuario_maquina": self.registeredDeviceId
             }
 
-            response = self.http_client.post(url, payload)
+            response = self.http_client.post(endpoint, payload)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem", "Falha na autenticação.")

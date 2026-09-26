@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import serialization, hashes
 from app.controllers.cryptoController import CryptoController
 
-class EncryptionService:
+class EncryptionController:
     def __init__(self):
         self.server_public_key = self._load_server_public_key()
         self.client_key_info, self.client_public_key_pem = self._load_or_generate_client_hardware_keys()

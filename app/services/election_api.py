@@ -3,8 +3,7 @@ from decouple import config
 from app.services.http_client import HttpClient
 
 class ElectionApiService:
-    def __init__(self, base_url=None):
-        self.base_url = (base_url or config('API_BASE_URL', default='http://127.0.0.1:8000')).rstrip('/')
+    def __init__(self):
         self.http_client = HttpClient()
 
     def enviar_eleicao(self, payload):
@@ -13,6 +12,6 @@ class ElectionApiService:
         O HttpClient automaticamente encapsula a requisição no envelope
         criptográfico híbrido AES-GCM + RSA do TPM.
         """
-        url = f"{self.base_url}/api/election/create/"
-        return self.http_client.post(url, payload)
+        endpoint = "/api/election/create/"
+        return self.http_client.post(endpoint, payload)
 

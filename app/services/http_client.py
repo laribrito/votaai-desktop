@@ -2,14 +2,17 @@ import json
 import socket
 import urllib.request
 import urllib.error
-from app.services.encryption_service import EncryptionService
+from decouple import config
+from app.controllers.encryptionController import EncryptionController
 
 class HttpClient:
     def __init__(self, timeout=30):
-        self.encryption_service = EncryptionService()
+        self.encryption_controller = EncryptionController()
         self.timeout = timeout
+        self.base_url = config('API_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')
 
-    def post(self, url, payload, custom_headers=None, timeout=None):
+    def post(self, endpoint, payload, custom_headers=None, timeout=None):
+        url = endpoint if endpoint.startswith('http') else f"{self.base_url}{endpoint if endpoint.startswith('/') else '/' + endpoint}"
         headers = {'Content-Type': 'application/json'}
         if custom_headers:
             headers.update(custom_headers)
@@ -18,7 +21,7 @@ class HttpClient:
 
         # Criptografa o payload para todas as requisições
         try:
-            encrypted_payload = self.encryption_service.encrypt_payload(payload)
+            encrypted_payload = self.encryption_controller.encrypt_payload(payload)
         except Exception as e:
             print(f"Erro ao criptografar o payload: {e}")
             return {"status": "erro", "mensagem": f"Erro interno de criptografia antes do envio: {str(e)}"}
@@ -30,7 +33,7 @@ class HttpClient:
             with urllib.request.urlopen(req, timeout=req_timeout) as response:
                 result_str = response.read().decode('utf-8')
                 try:
-                    decrypted_result = self.encryption_service.decrypt_response(result_str)
+                    decrypted_result = self.encryption_controller.decrypt_response(result_str)
                     return {"status": "sucesso", "dados": decrypted_result}
                 except Exception as de:
                     print(f"Erro ao descriptografar resposta: {de}")
@@ -41,7 +44,7 @@ class HttpClient:
             error_body = e.read().decode('utf-8')
             try:
                 try:
-                    decrypted = self.encryption_service.decrypt_response(error_body)
+                    decrypted = self.encryption_controller.decrypt_response(error_body)
                     error_body = decrypted
                 except Exception:
                     pass
