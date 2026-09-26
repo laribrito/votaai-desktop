@@ -35,6 +35,12 @@ Rectangle {
     property bool isValidCsv: false
     property string csvErrorMessage: ""
     property bool hasValidQuestion: false
+    property bool isLoading: false
+    property string statusMessage: ""
+    property bool statusIsError: false
+    property bool isElectionCreated: false
+    property alias backToMainBtn: backToMainBtn
+
 
     signal backClicked
     signal moveQuestionUpClicked(int index)
@@ -609,8 +615,10 @@ Rectangle {
         y: Constants.height - height - 30
         width: 160
         height: 40
-        text: qsTr("Criar Eleição")
-        enabled: textInput.text !== "" && isValidCsv && hasValidQuestion
+        text: root.isLoading ? qsTr("Criando...") : qsTr("Criar Eleição")
+        enabled: !root.isLoading && textInput.text !== "" && isValidCsv && hasValidQuestion && !root.isElectionCreated
+        visible: !root.isElectionCreated
+
         opacity: enabled ? 1.0 : 0.5
 
         background: Rectangle {
@@ -633,5 +641,56 @@ Rectangle {
             font.pixelSize: 14
             font.bold: true
         }
+    }
+
+    Button {
+        id: backToMainBtn
+        x: Constants.width - width - 45
+        y: Constants.height - height - 30
+        width: 160
+        height: 40
+        text: qsTr("Voltar ao Painel")
+        visible: root.isElectionCreated
+
+        background: Rectangle {
+            color: parent.down ? "#2b3d4f" : (parent.hovered ? "#3e5770" : "#34495e")
+            radius: 6
+            Rectangle {
+                z: -1
+                width: parent.width
+                height: parent.height
+                y: 3
+                color: "#33000000"
+                radius: 6
+            }
+        }
+        contentItem: Text {
+            text: parent.text
+            color: "white"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 14
+            font.bold: true
+        }
+        Connections {
+            function onClicked() {
+                root.backClicked()
+            }
+        }
+    }
+
+    Text {
+        id: statusMessageText
+        anchors.right: (createElectionBtn.visible ? createElectionBtn.left : (backToMainBtn.visible ? backToMainBtn.left : parent.right))
+        anchors.rightMargin: (createElectionBtn.visible || backToMainBtn.visible) ? 15 : 45
+        anchors.verticalCenter: createElectionBtn.verticalCenter
+        width: 480
+        text: root.statusMessage
+        color: root.statusIsError ? "#d9534f" : "#1e7e34"
+        font.pixelSize: 13
+        font.bold: true
+        horizontalAlignment: Text.AlignRight
+        wrapMode: Text.WordWrap
+        visible: root.statusMessage !== ""
     }
 }

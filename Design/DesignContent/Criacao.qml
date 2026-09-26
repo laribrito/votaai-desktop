@@ -43,6 +43,62 @@ CriacaoForm {
         backend.search(searchInput.text)
     }
 
+    createElectionBtn.onClicked: {
+        statusMessage = ""
+        isLoading = true
+        var ballot = []
+        for (var i = 0; i < questionsModel.count; i++) {
+            var q = questionsModel.get(i)
+            var options = []
+            for (var j = 0; j < q.options.count; j++) {
+                var optText = q.options.get(j).optionText.trim()
+                if (optText !== "") {
+                    options.push(optText)
+                }
+            }
+            if (q.questionText.trim() !== "") {
+                ballot.push({
+                    "question": q.questionText.trim(),
+                    "options": options
+                })
+            }
+        }
+        backend.createElection(textInput.text, JSON.stringify(ballot))
+    }
+
+    Connections {
+        target: backend
+        function onCreateElectionFinished(resStr) {
+            isLoading = false
+            console.log("Resultado da criação da eleição:", resStr)
+            try {
+                var res = JSON.parse(resStr)
+                if (res.status === "sucesso") {
+                    statusIsError = false
+                    statusMessage = "Eleição criada com sucesso!"
+                    isElectionCreated = true
+                } else {
+                    statusIsError = true
+                    isElectionCreated = false
+                    var msg = res.mensagem || "Erro ao criar eleição."
+                    if (typeof msg === 'object') {
+                        var parts = []
+                        for (var k in msg) {
+                            parts.push(k + ": " + (Array.isArray(msg[k]) ? msg[k].join("; ") : msg[k]))
+                        }
+                        msg = parts.join(" | ")
+                    }
+                    statusMessage = msg
+                }
+            } catch (e) {
+                statusIsError = true
+                isElectionCreated = false
+                statusMessage = resStr
+            }
+        }
+    }
+
+
     // Connect FileDialogs
     fileDialog.onAccepted: {
         var path = fileDialog.selectedFile.toString();
