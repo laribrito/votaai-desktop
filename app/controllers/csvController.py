@@ -1,11 +1,10 @@
 import csv
 import json
+import threading
 from PySide6.QtCore import QObject, Slot, Signal, Property, QAbstractTableModel, Qt, QSortFilterProxyModel
 
 from app.controllers.cryptoController import CryptoController
 from app.services.election_api import ElectionApiService
-from app.services.auth_service import AuthService
-from app.services.device_service import DeviceService
 from app.services.http_client import HttpClient
 
 class CsvTableModel(QAbstractTableModel):
@@ -44,22 +43,30 @@ class CsvTableModel(QAbstractTableModel):
 
 class CsvController(QObject):
     modelChanged = Signal()
+    createElectionFinished = Signal(str)
+    testConnectionFinished = Signal(str)
+    isLoadingChanged = Signal()
 
     def __init__(self, institutional_domain="@uesc.br"):
         super().__init__()
         self.institutional_domain = institutional_domain
         self.crypto_controller = CryptoController()
-        
-        device_service = DeviceService()
-        http_client = HttpClient()
-        auth_service = AuthService(self.crypto_controller, device_service, http_client)
-        
-        self.api_service = ElectionApiService(auth_service)
+        self.api_service = ElectionApiService()
         self._csv_model = CsvTableModel()
         self._proxy_model = QSortFilterProxyModel()
         self._proxy_model.setSourceModel(self._csv_model)
         self._proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self._proxy_model.setFilterKeyColumn(-1)
+        self._is_loading = False
+
+    @Property(bool, notify=isLoadingChanged)
+    def isLoading(self):
+        return self._is_loading
+
+    def _set_loading(self, loading: bool):
+        if self._is_loading != loading:
+            self._is_loading = loading
+            self.isLoadingChanged.emit()
 
     @Property(QObject, notify=modelChanged)
     def csvModel(self):
@@ -118,51 +125,115 @@ class CsvController(QObject):
         except Exception as e:
             print(f"Erro ao salvar template: {e}")
 
-    @Slot(str, str, result=str)
-    def createElection(self, titulo, cedula_json):
-        # 1. Gera a chave pública e o handle no hardware seguro correspondente ao SO atual
-        chave_publica, key_handle = self.crypto_controller.generate_hardware_keys()
+    def _execute_create_election(self, title, ballot_json):
+        # 1. Gera a chave pública e o handle da eleição no hardware seguro correspondente ao SO atual
+        public_key, key_handle = self.crypto_controller.generate_hardware_keys()
         
-        # 2. Resgata o colégio eleitoral que já foi validado pelo CSV
-        colegio_eleitoral = []
+        # 2. Resgata o colégio eleitoral que já foi validado pelo CSV (campos em inglês)
+        electoral_college = []
         for row in self._csv_model._data:
-            nome_completo = row[0]
-            email = row[1]
-            apelido = nome_completo.split()[0] if nome_completo else ""
-            colegio_eleitoral.append({
-                "nomeCompleto": nome_completo,
-                "email": email,
-                "apelido": apelido
+            full_name = row[0].strip() if len(row) > 0 else ""
+            email = row[1].strip() if len(row) > 1 else ""
+            electoral_college.append({
+                "name": full_name,
+                "email": email
             })
 
-        # 3. Faz o parsing das perguntas da cédula vindas do front-end
+        # 3. Faz o parsing e normalização da cédula (campos em inglês)
         try:
-            cedula = json.loads(cedula_json)
+            raw_ballot = json.loads(ballot_json)
         except Exception as e:
             print(f"Erro ao converter cédula: {e}")
-            cedula = []
+            raw_ballot = []
 
-        # 4. Monta o payload final conforme a especificação
+        ballot = []
+        for item in raw_ballot:
+            question_text = (item.get("question") or item.get("enunciado") or item.get("titulo") or "").strip()
+            raw_options = item.get("options") or item.get("opcoes") or []
+            options = []
+            for idx, opt in enumerate(raw_options):
+                if isinstance(opt, str):
+                    opt_str = opt.strip()
+                    if opt_str:
+                        options.append({"title": opt_str, "position": idx + 1})
+                elif isinstance(opt, dict):
+                    title_opt = (opt.get("title") or opt.get("opcao") or opt.get("text") or "").strip()
+                    if title_opt:
+                        options.append({"title": title_opt, "position": opt.get("position", idx + 1)})
+
+            if question_text and options:
+                ballot.append({
+                    "question": question_text,
+                    "maxOptions": item.get("maxOptions", 1),
+                    "minOptions": item.get("minOptions", 1),
+                    "options": options
+                })
+
+        # 4. Gera a assinatura digital com a chave física da máquina registrada no TPM
+        ballot_repr = json.dumps(ballot, sort_keys=True)
+        college_repr = json.dumps(electoral_college, sort_keys=True)
+        canonical_str = f"{title}:{ballot_repr}:{college_repr}:{public_key}:{key_handle}"
+
+        crypto_backend = CryptoController.get_backend()
+        try:
+            signature = crypto_backend.sign_data("VotaAI_DesktopClient_Key", canonical_str)
+        except Exception as e:
+            print(f"Erro ao assinar payload da eleição: {e}")
+            signature = ""
+
+        # 5. Monta o payload final exclusivamente com campos em inglês
         payload = {
-            "titulo": titulo,
-            "chavePublica": chave_publica,
+            "title": title,
+            "publicKey": public_key,
             "keyHandle": key_handle,
-            "cedula": cedula,
-            "colegio_eleitoral": colegio_eleitoral
+            "ballot": ballot,
+            "electoralCollege": electoral_college,
+            "signature": signature
         }
         
-        # 5. Envia para a API externa usando o serviço
+        # 6. Envia para a API externa usando o serviço
         resultado = self.api_service.enviar_eleicao(payload)
         return json.dumps(resultado)
 
+    @Slot(str, str)
+    def createElection(self, titulo, cedula_json):
+        """Dispara a criação de eleição em segundo plano (assíncrono)."""
+        self._set_loading(True)
+        def _worker():
+            try:
+                res = self._execute_create_election(titulo, cedula_json)
+            except Exception as e:
+                res = json.dumps({"status": "erro", "mensagem": str(e)})
+            finally:
+                self._set_loading(False)
+            self.createElectionFinished.emit(res)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     @Slot(result=str)
     def testConnection(self):
+        """Teste síncrono para scripts/terminal."""
         try:
             http_client = HttpClient()
             payload = {"ping": "Hello from Desktop"}
-            # The backend is expecting the request to the local ping-desktop endpoint
             response = http_client.post("http://127.0.0.1:8000/api/ping-desktop/", payload)
             return json.dumps(response, ensure_ascii=False, indent=2)
         except Exception as e:
             return f"Erro ao conectar: {str(e)}"
+
+    @Slot()
+    def testConnectionAsync(self):
+        """Dispara o teste de conexão em segundo plano emitindo testConnectionFinished."""
+        self._set_loading(True)
+        def _worker():
+            try:
+                res = self.testConnection()
+            except Exception as e:
+                res = f"Erro ao conectar: {str(e)}"
+            finally:
+                self._set_loading(False)
+            self.testConnectionFinished.emit(res)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
 
