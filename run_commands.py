@@ -40,9 +40,7 @@ def get_cz_command():
 def run_command(command, description):
     safe_print(f"\n[>] Executando: {description}...")
     try:
-        # Executa no PowerShell se for Windows
-        shell = True if os.name == 'nt' else False
-        result = subprocess.run(command, shell=shell, check=True, text=True, capture_output=True, encoding='utf-8', errors="replace")
+        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True, encoding='utf-8', errors="replace")
         if result.stdout:
             safe_print(result.stdout.strip())
         safe_print(f"[+] Sucesso: {description}")
