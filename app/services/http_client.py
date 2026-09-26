@@ -1,17 +1,21 @@
 import json
+import socket
 import urllib.request
 import urllib.error
 from app.services.encryption_service import EncryptionService
 
 class HttpClient:
-    def __init__(self):
+    def __init__(self, timeout=30):
         self.encryption_service = EncryptionService()
+        self.timeout = timeout
 
-    def post(self, url, payload, custom_headers=None):
+    def post(self, url, payload, custom_headers=None, timeout=None):
         headers = {'Content-Type': 'application/json'}
         if custom_headers:
             headers.update(custom_headers)
             
+        req_timeout = timeout if timeout is not None else self.timeout
+
         # Criptografa o payload para todas as requisições
         try:
             encrypted_payload = self.encryption_service.encrypt_payload(payload)
@@ -23,7 +27,7 @@ class HttpClient:
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
         
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=req_timeout) as response:
                 result_str = response.read().decode('utf-8')
                 try:
                     decrypted_result = self.encryption_service.decrypt_response(result_str)
@@ -31,6 +35,8 @@ class HttpClient:
                 except Exception as de:
                     print(f"Erro ao descriptografar resposta: {de}")
                     return {"status": "sucesso", "dados": result_str}
+        except TimeoutError:
+            return {"status": "erro", "mensagem": "O servidor demorou muito para responder (tempo limite esgotado)."}
         except urllib.error.HTTPError as e:
             error_body = e.read().decode('utf-8')
             try:
@@ -56,8 +62,11 @@ class HttpClient:
                 mensagem = error_body
             return {"status": "erro", "mensagem": mensagem}
         except urllib.error.URLError as e:
+            if isinstance(getattr(e, 'reason', None), (socket.timeout, TimeoutError)):
+                return {"status": "erro", "mensagem": "O servidor demorou muito para responder (tempo limite esgotado)."}
             print(f"Erro de conexão na requisição POST para {url}: {e}")
-            return {"status": "erro", "mensagem": str(e.reason if hasattr(e, 'reason') else e)}
+            return {"status": "erro", "mensagem": f"Erro de conexão: {str(e.reason if hasattr(e, 'reason') else e)}"}
         except Exception as e:
             print(f"Erro inesperado na requisição POST para {url}: {e}")
             return {"status": "erro", "mensagem": str(e)}
+

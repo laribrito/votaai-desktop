@@ -21,6 +21,21 @@ AutenticacaoForm {
                 registeredNameText = authController.registeredUserName
             }
         }
+
+        function onLoginFinished(resStr) {
+            isLoading = false
+            try {
+                var res = JSON.parse(resStr)
+                if (res.status === "sucesso") {
+                    errorMessage = ""
+                    form.loginSucesso()
+                } else {
+                    errorMessage = res.mensagem || qsTr("Falha na autenticação.")
+                }
+            } catch (e) {
+                errorMessage = qsTr("Erro ao processar resposta do servidor: ") + e
+            }
+        }
     }
 
     onTogglePasswordVisibilityClicked: {
@@ -65,20 +80,6 @@ AutenticacaoForm {
         }
 
         isLoading = true
-
-        var resStr = authController.login(senha, totp)
-        isLoading = false
-
-        try {
-            var res = JSON.parse(resStr)
-            if (res.status === "sucesso") {
-                errorMessage = ""
-                form.loginSucesso()
-            } else {
-                errorMessage = res.mensagem || qsTr("Falha na autenticação.")
-            }
-        } catch (e) {
-            errorMessage = qsTr("Erro ao processar resposta do servidor: ") + e
-        }
+        authController.login(senha, totp)
     }
 }

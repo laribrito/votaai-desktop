@@ -21,6 +21,39 @@ CadastroForm {
             isAlreadyRegistered = authController.isRegistered
             registeredEmailText = authController.registeredEmail
         }
+
+        function onPreCadastroFinished(resStr) {
+            isLoading = false
+            try {
+                var res = JSON.parse(resStr)
+                if (res.status === "sucesso") {
+                    qrCodeSource = res.qr_base64 ? res.qr_base64 : ("file:///" + res.qr_path)
+                    secretKeyText = res.secret || ""
+                    currentStep = 2
+                    errorMessage = ""
+                } else {
+                    errorMessage = res.mensagem || "Erro ao iniciar pré-cadastro."
+                }
+            } catch (e) {
+                errorMessage = "Erro ao processar resposta: " + e
+            }
+        }
+
+        function onConfirmarPreCadastroFinished(resStr) {
+            isLoading = false
+            try {
+                var res = JSON.parse(resStr)
+                if (res.status === "sucesso") {
+                    currentStep = 3
+                    errorMessage = ""
+                    form.cadastroConcluido()
+                } else {
+                    errorMessage = res.mensagem || "Código TOTP inválido ou falha de autenticação."
+                }
+            } catch (e) {
+                errorMessage = "Erro ao processar resposta: " + e
+            }
+        }
     }
 
     // Ação: Submeter Etapa 1 (Criar Chave e Iniciar Cadastro)
@@ -55,23 +88,7 @@ CadastroForm {
         }
 
         isLoading = true
-
-        var resStr = authController.iniciarPreCadastro(email, senha)
-        isLoading = false
-
-        try {
-            var res = JSON.parse(resStr)
-            if (res.status === "sucesso") {
-                qrCodeSource = res.qr_base64 ? res.qr_base64 : ("file:///" + res.qr_path)
-                secretKeyText = res.secret || ""
-                currentStep = 2
-                errorMessage = ""
-            } else {
-                errorMessage = res.mensagem || "Erro ao iniciar pré-cadastro."
-            }
-        } catch (e) {
-            errorMessage = "Erro ao processar resposta: " + e
-        }
+        authController.iniciarPreCadastro(email, senha)
     }
 
     // Ação: Submeter Etapa 2 (Confirmar Código TOTP)
@@ -86,22 +103,7 @@ CadastroForm {
         }
 
         isLoading = true
-
-        var resStr = authController.confirmarPreCadastro(email, totp)
-        isLoading = false
-
-        try {
-            var res = JSON.parse(resStr)
-            if (res.status === "sucesso") {
-                currentStep = 3
-                errorMessage = ""
-                form.cadastroConcluido()
-            } else {
-                errorMessage = res.mensagem || "Código TOTP inválido ou falha de autenticação."
-            }
-        } catch (e) {
-            errorMessage = "Erro ao processar resposta: " + e
-        }
+        authController.confirmarPreCadastro(email, totp)
     }
 
     // Ação: Copiar chave manual

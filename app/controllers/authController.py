@@ -3,12 +3,13 @@ import io
 import json
 import base64
 import urllib.parse
+import threading
 from datetime import datetime
 from PySide6.QtCore import QObject, Slot, Signal, Property
 from PySide6.QtGui import QGuiApplication
 from decouple import config
 
-from app.controllers.native import cng_windows
+from app.controllers.cryptoController import CryptoController
 from app.services.http_client import HttpClient
 from app.services.device_service import DeviceService
 import qrcode
@@ -17,9 +18,14 @@ class AuthController(QObject):
     """
     Controlador para gerenciar o pré-cadastro do usuário administrador
     com provisionamento de chave RSA segura no hardware TPM e segundo fator TOTP.
+    Todas as chamadas à API são executadas de forma assíncrona.
     """
     registrationStatusChanged = Signal()
     authenticationStatusChanged = Signal()
+    preCadastroFinished = Signal(str)
+    confirmarPreCadastroFinished = Signal(str)
+    loginFinished = Signal(str)
+    isLoadingChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,6 +35,7 @@ class AuthController(QObject):
         os.makedirs(self.resources_dir, exist_ok=True)
         self._is_authenticated = False
         self._auth_token = None
+        self._is_loading = False
 
     def _get_registration_path(self):
         return os.path.join(self.resources_dir, 'registration_info.json')
@@ -42,6 +49,15 @@ class AuthController(QObject):
             except Exception as e:
                 print(f"Erro ao ler registration_info.json: {e}")
         return {}
+
+    @Property(bool, notify=isLoadingChanged)
+    def isLoading(self):
+        return self._is_loading
+
+    def _set_loading(self, loading: bool):
+        if self._is_loading != loading:
+            self._is_loading = loading
+            self.isLoadingChanged.emit()
 
     @Property(bool, notify=registrationStatusChanged)
     def isRegistered(self):
@@ -138,15 +154,8 @@ class AuthController(QObject):
         if clipboard:
             clipboard.setText(text)
 
-    @Slot(str, str, result=str)
-    def iniciarPreCadastro(self, email: str, senha: str) -> str:
-        """
-        Passo 1 do fluxo:
-        - Valida credenciais locais
-        - Gera novo par de chaves RSA no Secure Element (TPM)
-        - Envia requisição cifrada para POST /api/admin/pre-cadastro/
-        - Recebe uri_provisionamento e gera QR Code para autenticador
-        """
+    def _execute_iniciar_pre_cadastro(self, email: str, senha: str) -> str:
+        """Execução síncrona do passo 1 do fluxo."""
         email = (email or '').strip()
         senha = (senha or '').strip()
 
@@ -175,7 +184,8 @@ class AuthController(QObject):
                     key_info = None
 
             if not key_info or not key_info.get("PublicKeyBase64"):
-                key_info = cng_windows.generate_rsa_key("VotaAI_DesktopClient_Key")
+                crypto_backend = CryptoController.get_backend()
+                key_info = crypto_backend.generate_rsa_key("VotaAI_DesktopClient_Key")
                 with open(client_key_path, 'w', encoding='utf-8') as f:
                     json.dump(key_info, f, indent=4)
 
@@ -188,8 +198,11 @@ class AuthController(QObject):
             payload = {
                 "email": email,
                 "senha": senha,
+                "password": senha,
                 "chave_publica_maquina": client_pub_pem,
-                "usuario_maquina": device_id
+                "machine_public_key": client_pub_pem,
+                "usuario_maquina": device_id,
+                "device_id": device_id
             }
 
             response = self.http_client.post(url, payload)
@@ -250,15 +263,26 @@ class AuthController(QObject):
         except Exception as e:
             return json.dumps({"status": "erro", "mensagem": f"Falha na operação: {str(e)}"})
 
-    @Slot(str, str, result=str)
-    def confirmarPreCadastro(self, email: str, codigo_totp: str) -> str:
+    @Slot(str, str)
+    def iniciarPreCadastro(self, email: str, senha: str):
         """
-        Passo 2 do fluxo:
-        - Valida o código TOTP digitado
-        - Gera assinatura digital RSA no hardware TPM com a chave privada da máquina
-        - Envia para POST /api/admin/pre-cadastro/confirmar/
-        - Salva o status de confirmação localmente ao receber sucesso
+        Dispara o início do pré-cadastro em segundo plano (assíncrono).
+        Emite o sinal preCadastroFinished(resJson) ao terminar.
         """
+        self._set_loading(True)
+        def _worker():
+            try:
+                res = self._execute_iniciar_pre_cadastro(email, senha)
+            except Exception as e:
+                res = json.dumps({"status": "erro", "mensagem": f"Falha na operação: {str(e)}"})
+            finally:
+                self._set_loading(False)
+            self.preCadastroFinished.emit(res)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _execute_confirmar_pre_cadastro(self, email: str, codigo_totp: str) -> str:
+        """Execução síncrona do passo 2 do fluxo."""
         email = (email or '').strip()
         codigo_totp = (codigo_totp or '').strip()
 
@@ -272,13 +296,16 @@ class AuthController(QObject):
         try:
             # 1. Assina o payload com a chave privada residente no chip de hardware TPM
             payload_to_sign = f"{email}:{codigo_totp}"
-            assinatura = cng_windows.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
+            crypto_backend = CryptoController.get_backend()
+            assinatura = crypto_backend.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
 
             # 2. Envia para o backend
             url = f"{self.api_base_url}/api/admin/pre-cadastro/confirmar/"
             payload = {
                 "email": email,
+                "totp_code": codigo_totp,
                 "codigo_totp": codigo_totp,
+                "signature": assinatura,
                 "assinatura": assinatura
             }
 
@@ -317,6 +344,24 @@ class AuthController(QObject):
         except Exception as e:
             return json.dumps({"status": "erro", "mensagem": f"Erro na confirmação: {str(e)}"})
 
+    @Slot(str, str)
+    def confirmarPreCadastro(self, email: str, codigo_totp: str):
+        """
+        Dispara a confirmação de pré-cadastro em segundo plano (assíncrono).
+        Emite o sinal confirmarPreCadastroFinished(resJson) ao terminar.
+        """
+        self._set_loading(True)
+        def _worker():
+            try:
+                res = self._execute_confirmar_pre_cadastro(email, codigo_totp)
+            except Exception as e:
+                res = json.dumps({"status": "erro", "mensagem": f"Erro na confirmação: {str(e)}"})
+            finally:
+                self._set_loading(False)
+            self.confirmarPreCadastroFinished.emit(res)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     @Slot(result=bool)
     def resetRegistration(self) -> bool:
         """Remove o registro local para permitir novo pré-cadastro de teste."""
@@ -333,15 +378,8 @@ class AuthController(QObject):
         self.registrationStatusChanged.emit()
         return True
 
-    @Slot(str, str, result=str)
-    def login(self, senha: str, codigo_totp: str) -> str:
-        """
-        Autentica o administrador registrado com dois fatores (2FA):
-        1. Valida senha de acesso
-        2. Valida código TOTP de 6 dígitos
-        3. Assina o desafio no chip de hardware TPM da máquina
-        4. Envia para POST /api/auth/login/
-        """
+    def _execute_login(self, senha: str, codigo_totp: str) -> str:
+        """Execução síncrona do login de dois fatores."""
         senha = (senha or '').strip()
         codigo_totp = (codigo_totp or '').strip()
 
@@ -362,7 +400,8 @@ class AuthController(QObject):
             # 1. Gera assinatura digital RSA da máquina com o código TOTP
             payload_to_sign = f"{email}:{codigo_totp}"
             try:
-                assinatura = cng_windows.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
+                crypto_backend = CryptoController.get_backend()
+                assinatura = crypto_backend.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
             except Exception as se:
                 assinatura = ""
                 print(f"Aviso de assinatura TPM: {se}")
@@ -371,6 +410,9 @@ class AuthController(QObject):
             payload = {
                 "username": email,
                 "password": senha,
+                "totp_code": codigo_totp,
+                "signature": assinatura,
+                "device_id": self.registeredDeviceId,
                 "codigo_totp": codigo_totp,
                 "assinatura": assinatura,
                 "usuario_maquina": self.registeredDeviceId
@@ -387,12 +429,21 @@ class AuthController(QObject):
                         pass
 
                 if isinstance(msg, dict):
-                    if "codigo_totp" in msg:
+                    if "totp_code" in msg:
+                        totp_err = msg["totp_code"]
+                        msg = totp_err if isinstance(totp_err, str) else "; ".join(str(x) for x in totp_err)
+                    elif "codigo_totp" in msg:
                         totp_err = msg["codigo_totp"]
                         msg = totp_err if isinstance(totp_err, str) else "; ".join(str(x) for x in totp_err)
+                    elif "signature" in msg:
+                        sig_err = msg["signature"]
+                        msg = sig_err if isinstance(sig_err, str) else "; ".join(str(x) for x in sig_err)
                     elif "assinatura" in msg:
                         sig_err = msg["assinatura"]
                         msg = sig_err if isinstance(sig_err, str) else "; ".join(str(x) for x in sig_err)
+                    elif "device_id" in msg:
+                        dev_err = msg["device_id"]
+                        msg = dev_err if isinstance(dev_err, str) else "; ".join(str(x) for x in dev_err)
                     elif "usuario_maquina" in msg:
                         dev_err = msg["usuario_maquina"]
                         msg = dev_err if isinstance(dev_err, str) else "; ".join(str(x) for x in dev_err)
@@ -436,8 +487,27 @@ class AuthController(QObject):
         except Exception as e:
             return json.dumps({"status": "erro", "mensagem": f"Erro de conexão ao autenticar: {str(e)}"})
 
+    @Slot(str, str)
+    def login(self, senha: str, codigo_totp: str):
+        """
+        Dispara o login em segundo plano (assíncrono).
+        Emite o sinal loginFinished(resJson) ao terminar.
+        """
+        self._set_loading(True)
+        def _worker():
+            try:
+                res = self._execute_login(senha, codigo_totp)
+            except Exception as e:
+                res = json.dumps({"status": "erro", "mensagem": f"Erro de conexão ao autenticar: {str(e)}"})
+            finally:
+                self._set_loading(False)
+            self.loginFinished.emit(res)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     @Slot()
     def logout(self):
         self._is_authenticated = False
         self._auth_token = None
         self.authenticationStatusChanged.emit()
+
