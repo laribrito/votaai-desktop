@@ -6,9 +6,9 @@ import struct
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import serialization, hashes
-from app.controllers.native import cng_windows
+from app.controllers.cryptoController import CryptoController
 
-class EncryptionService:
+class EncryptionController:
     def __init__(self):
         self.server_public_key = self._load_server_public_key()
         self.client_key_info, self.client_public_key_pem = self._load_or_generate_client_hardware_keys()
@@ -17,12 +17,21 @@ class EncryptionService:
         return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
 
     def _load_server_public_key(self):
-        """Carrega a chave pública do servidor a partir do arquivo initial_key.json"""
+        """Carrega a chave pública do servidor a partir do arquivo obrigatório initial_key.json"""
         key_path = os.path.join(self._get_resources_dir(), 'initial_key.json')
+        if not os.path.exists(key_path):
+            raise FileNotFoundError(
+                f"O arquivo obrigatório 'initial_key.json' não foi encontrado em '{key_path}'. "
+                "Certifique-se de configurar a chave pública do servidor em app/resources/initial_key.json."
+            )
+
         try:
             with open(key_path, 'r', encoding='utf-8') as f:
                 crypto_config = json.load(f)
             
+            if isinstance(crypto_config, list):
+                crypto_config = next((k for k in crypto_config if k.get("KeyName") == "VotaAI_SecureKey_1"), crypto_config[0] if crypto_config else {})
+
             pub_key_b64 = crypto_config.get("PublicKeyBase64")
             if not pub_key_b64:
                 raise ValueError("PublicKeyBase64 não encontrada no initial_key.json")
@@ -30,15 +39,22 @@ class EncryptionService:
             return self._parse_public_key_blob(pub_key_b64)
         except Exception as e:
             print(f"Erro ao carregar chave pública do servidor: {e}")
-            return None
+            raise
+
 
     def _parse_public_key_blob(self, pub_key_b64):
-        """Converte uma chave pública Base64 (DER ou BCRYPT_RSAKEY_BLOB) em um objeto RSA public key."""
+        """Converte uma chave pública Base64 (DER, PEM ou BCRYPT_RSAKEY_BLOB) em um objeto RSA public key."""
+        if isinstance(pub_key_b64, str) and "-----BEGIN" in pub_key_b64:
+            return serialization.load_pem_public_key(pub_key_b64.encode('utf-8'))
+
         pub_key_blob = base64.b64decode(pub_key_b64)
         
         # Se for formato DER padrão (começa diferente de RSA1)
         if not pub_key_blob.startswith(b'RSA1'):
-            return serialization.load_der_public_key(pub_key_blob)
+            try:
+                return serialization.load_der_public_key(pub_key_blob)
+            except Exception:
+                pass
             
         # Formato BCRYPT_RSAKEY_BLOB (Microsoft CNG)
         magic, bitlen, cbpubexp, cbmodulus, cbprime1, cbprime2 = struct.unpack('<IIIIII', pub_key_blob[:24])
@@ -57,8 +73,8 @@ class EncryptionService:
     def _load_or_generate_client_hardware_keys(self):
         """
         Carrega os metadados da chave de hardware do cliente a partir de client_key.json.
-        Se não existir, gera uma nova chave no Secure Element (TPM) do hardware e salva o JSON.
-        A chave privada NUNCA sai do hardware.
+        Se não existir, gera uma nova chave no Secure Element (TPM) / Provedor Seguro do hardware e salva o JSON.
+        A chave privada NUNCA sai do hardware/armazenamento seguro.
         """
         key_path = os.path.join(self._get_resources_dir(), 'client_key.json')
         client_info = None
@@ -74,7 +90,8 @@ class EncryptionService:
 
         if not client_info:
             print("Gerando chave no hardware (Secure Element / TPM)...")
-            client_info = cng_windows.generate_rsa_key("VotaAI_DesktopClient_Key")
+            crypto_backend = CryptoController.get_backend()
+            client_info = crypto_backend.generate_rsa_key("VotaAI_DesktopClient_Key")
             try:
                 os.makedirs(os.path.dirname(key_path), exist_ok=True)
                 with open(key_path, 'w', encoding='utf-8') as f:
@@ -103,7 +120,10 @@ class EncryptionService:
         Inclui a chave pública de hardware do cliente no payload envelope.
         """
         if not self.server_public_key:
-            raise RuntimeError("Chave pública do servidor não foi carregada corretamente.")
+            # Tenta recarregar caso a chave do servidor tenha sido provida recentemente
+            self.server_public_key = self._load_server_public_key()
+            if not self.server_public_key:
+                raise RuntimeError("Chave pública do servidor não foi carregada corretamente.")
 
         # Converte payload para JSON string -> bytes
         json_payload_bytes = json.dumps(payload_dict).encode('utf-8')
@@ -172,12 +192,13 @@ class EncryptionService:
         if not self.client_key_info:
             raise RuntimeError("Informações da chave de hardware do cliente não disponíveis.")
 
-        # 1. Descriptografa a chave AES usando o HARDWARE TPM / CNG
+        # 1. Descriptografa a chave AES usando o HARDWARE TPM / Backend
         enc_aes_key_bytes = base64.b64decode(encrypted_aes_key)
         key_name = self.client_key_info.get("KeyName", "VotaAI_DesktopClient_Key")
         provider = self.client_key_info.get("Provider", "Microsoft Platform Crypto Provider")
         
-        aes_key_bytes = cng_windows.decrypt_data(key_name, enc_aes_key_bytes, provider_name=provider)
+        crypto_backend = CryptoController.get_backend()
+        aes_key_bytes = crypto_backend.decrypt_data(key_name, enc_aes_key_bytes, provider_name=provider)
 
         # 2. Descriptografa o payload com AES-GCM usando a chave revelada pelo hardware
         aesgcm = AESGCM(aes_key_bytes[:32])
@@ -193,5 +214,6 @@ class EncryptionService:
             return json.loads(decrypted_str)
         except Exception:
             return decrypted_str
+
 
 

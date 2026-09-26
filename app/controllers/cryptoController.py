@@ -4,7 +4,8 @@ class CryptoController:
     def __init__(self):
         self.backend = self._load_backend()
 
-    def _load_backend(self):
+    @staticmethod
+    def get_backend():
         platform = sys.platform
         if platform.startswith('linux'):
             from .native import tpm_linux as backend
@@ -13,21 +14,32 @@ class CryptoController:
         elif platform == 'darwin':
             from .native import enclave_mac as backend
         else:
-            raise RuntimeError(f"Plataforma não suportada: {platform}")
+            from .native import tpm_linux as backend
         return backend
 
+    def _load_backend(self):
+        return self.get_backend()
+
     def generate_hardware_keys(self):
-        """Gera chaves ECC (P-256) no hardware seguro da máquina e retorna (chave_publica, key_handle)."""
+        """Gera chaves no hardware seguro da máquina e retorna (chave_publica, key_handle)."""
         return self.backend.generate_key()
 
-    def decrypt_with_hardware(self, key_handle, encrypted_data):
-        """Usa a chave privada armazenada no hardware (referenciada pelo key_handle) para descriptografar os dados."""
-        return self.backend.decrypt_data(key_handle, encrypted_data)
+    def generate_rsa_key(self, key_name="VotaAI_DesktopClient_Key"):
+        """Gera uma chave RSA no Secure Element / TPM ou provedor seguro da plataforma."""
+        return self.backend.generate_rsa_key(key_name)
 
-    def sign_data(self, key_handle, payload_string):
+    def decrypt_with_hardware(self, key_handle, encrypted_data, provider_name=None):
+        """Usa a chave privada armazenada no hardware (referenciada pelo key_handle) para descriptografar os dados."""
+        return self.backend.decrypt_data(key_handle, encrypted_data, provider_name=provider_name)
+
+    def decrypt_data(self, key_handle, encrypted_data, provider_name=None):
+        return self.backend.decrypt_data(key_handle, encrypted_data, provider_name=provider_name)
+
+    def sign_data(self, key_handle, payload_string, provider_name=None):
         """
         Usa a chave privada armazenada no hardware (via key_handle) para 
         assinar digitalmente a string do payload.
         Retorna a assinatura em Base64.
         """
-        return self.backend.sign_data(key_handle, payload_string)
+        return self.backend.sign_data(key_handle, payload_string, provider_name=provider_name)
+

@@ -97,6 +97,7 @@ Rectangle {
 
             TextField {
                 id: emailInput
+                enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
@@ -131,6 +132,7 @@ Rectangle {
 
             TextField {
                 id: passwordInput
+                enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
@@ -166,6 +168,7 @@ Rectangle {
 
             TextField {
                 id: confirmPasswordInput
+                enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
@@ -247,7 +250,8 @@ Rectangle {
             width: 220
             height: 40
             text: root.isLoading ? qsTr("Criando Chave...") : qsTr("Criar Chave e Cadastrar")
-            enabled: !root.isLoading
+            enabled: !root.isLoading && !root.isAlreadyRegistered
+            visible: !root.isAlreadyRegistered
 
             background: Rectangle {
                 color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")
@@ -364,7 +368,7 @@ Rectangle {
         // Lado Direito: Campo TOTP
         Text {
             id: labelTotp
-            x: 285
+            x: 360
             y: 138
             text: qsTr("Código de 6 dígitos gerado pelo aplicativo")
             font.pixelSize: 12
@@ -372,7 +376,7 @@ Rectangle {
         }
 
         Rectangle {
-            x: 285
+            x: 360
             y: 163
             width: 210
             height: 35
@@ -400,9 +404,9 @@ Rectangle {
         }
 
         Text {
-            x: 285
+            x: 360
             y: 215
-            width: 340
+            width: 380
             text: qsTr("Abra o Google Authenticator ou Microsoft Authenticator em seu celular para escanear o QR Code e digitar o código gerado.")
             font.pixelSize: 12
             font.weight: Font.Light
@@ -412,9 +416,9 @@ Rectangle {
 
         Text {
             id: errorStep2
-            x: 285
+            x: 360
             y: 280
-            width: 340
+            width: 380
             text: root.errorMessage
             color: "#d9534f"
             font.pixelSize: 12
@@ -460,7 +464,8 @@ Rectangle {
             width: 200
             height: 40
             text: root.isLoading ? qsTr("Validando...") : qsTr("Confirmar e Ativar")
-            enabled: !root.isLoading
+            enabled: !root.isLoading && !root.isAlreadyRegistered
+            visible: !root.isAlreadyRegistered
 
             background: Rectangle {
                 color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")

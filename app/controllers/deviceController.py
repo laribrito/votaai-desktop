@@ -1,7 +1,7 @@
 import uuid
 import hashlib
 
-class DeviceService:
+class DeviceController:
     def get_device_id(self):
         """
         Gera um identificador único para o dispositivo usando o endereço MAC (hardware).
