@@ -1,3 +1,33 @@
+## v0.7.0 (2026-09-26)
+
+### Feat
+
+- add comments command to run_commands.py
+- **ui**: add loading feedback and post-creation navigation in election screen
+- **election**: integrate election creation endpoint with hardware signature and dual fields
+- **auth**: implement asynchronous authentication and api timeout handling
+- **crypto**: add linux and mac secure hardware tpm support
+- **ui**: mascarar e-mail do usuario na tela de autenticacao
+- **auth**: reutilizar chave tpm e refinar tratamento de erros no login
+- **ui**: adicionar tela de autenticacao 2FA com estetica padrao do sistema
+- **auth**: implementar metodo de login com autenticacao em dois fatores (2FA) e assinatura TPM
+- **ui**: exibir responsavel da maquina com controle de visualizacao de email
+- **auth**: expor propriedades do administrador e identificador da maquina
+- **auth**: bloquear pre-cadastro quando maquina ja possui administrador vinculado
+- primeiro commit
+
+### Fix
+
+- **script**: conditionalize automated tests for desktop project
+- **script**: enable shell execution on posix systems in run_commands.py
+- **ui**: increase column spacing in step 2 to prevent title overlap
+- **http**: preservar estrutura de dados em respostas de erro da api
+
+### Refactor
+
+- reorganize api services, extract controllers and translate auth variables
+- remove unused auth_service.py mock
+
 ## v0.6.0 (2026-09-04)
 
 ### Feat
