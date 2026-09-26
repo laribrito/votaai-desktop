@@ -57,8 +57,13 @@ def pre_merge():
     # 1. Verifica se existem arquivos modificados e pendentes de commit
     run_command("git status -s", "Verificando status do repositório")
     
-    # 2. Testes automatizados (Django)
-    run_command("python manage.py test", "Executando testes automatizados do Django")
+    # 2. Testes automatizados
+    if os.path.exists("manage.py"):
+        run_command(f'"{sys.executable}" manage.py test', "Executando testes automatizados do Django")
+    elif os.path.exists("tests") or os.path.exists("test"):
+        run_command(f'"{sys.executable}" -m unittest discover', "Executando testes automatizados")
+    else:
+        safe_print("\n[-] Nenhum teste automatizado configurado para este projeto.")
 
 def create_pr(flag="--fill"):
     print("\n=== CREATING PULL REQUEST ===")
@@ -101,7 +106,7 @@ def sync_main():
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in ["pre", "pr", "sync", "clean"]:
         print("Uso: python run_commands.py [pre|pr|sync|clean] [--web]")
-        print("  pre   - Executa testes automatizados do Django e checa status do repositório")
+        print("  pre   - Executa checagens pré-merge e status do repositório")
         print("  pr    - Cria um Pull Request no GitHub de forma automática com os commits (use --web para abrir no navegador)")
         print("  clean - Volta para a main, atualiza e deleta a branch local mesclada")
         print("  sync  - Busca atualizações da main e tenta mesclar localmente para resolver conflitos")
