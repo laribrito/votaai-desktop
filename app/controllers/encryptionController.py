@@ -115,44 +115,58 @@ class EncryptionController:
 
     def encrypt_payload(self, payload_dict):
         """
-        Criptografa o payload usando AES-GCM (Chave simétrica)
-        e depois criptografa a chave simétrica com a Chave Pública RSA do Servidor.
-        Inclui a chave pública de hardware do cliente no payload envelope.
+        Implementa Sign-then-Encrypt:
+          1. Serializa o payload canonicamente (chaves ordenadas, sem espaços).
+          2. Assina com RSA-PSS + SHA-256 via chave privada residente no hardware.
+          3. Injeta 'signature' e 'client_public_key' no payload.
+          4. Cifra o payload enriquecido com AES-256-GCM.
+          5. Protege a chave AES com a chave pública RSA do servidor (PKCS1v15).
         """
         if not self.server_public_key:
-            # Tenta recarregar caso a chave do servidor tenha sido provida recentemente
             self.server_public_key = self._load_server_public_key()
             if not self.server_public_key:
                 raise RuntimeError("Chave pública do servidor não foi carregada corretamente.")
 
-        # Converte payload para JSON string -> bytes
-        json_payload_bytes = json.dumps(payload_dict).encode('utf-8')
+        # 1. Serialização canônica — determinística, independente de plataforma
+        canonical_json = json.dumps(payload_dict, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
 
-        # 1. Gera chave AES (32 bytes) e IV (12 bytes)
+        # 2. Assina o JSON canônico com RSA-PSS via hardware (chave privada nunca sai do dispositivo)
+        crypto_backend = CryptoController.get_backend()
+        key_name = (
+            self.client_key_info.get("KeyName", "VotaAI_DesktopClient_Key")
+            if self.client_key_info else "VotaAI_DesktopClient_Key"
+        )
+        try:
+            signature_b64 = crypto_backend.sign_data(key_name, canonical_json)
+        except Exception as e:
+            raise RuntimeError(f"Falha ao assinar o payload com a chave de hardware: {e}") from e
+
+        # 3. Enriquece o payload com a assinatura e a chave pública do cliente antes de cifrar
+        signed_payload = dict(payload_dict)
+        signed_payload["signature"] = signature_b64
+        signed_payload["client_public_key"] = self.client_public_key_pem
+
+        # 4. Cifra o payload enriquecido com AES-256-GCM
+        json_payload_bytes = json.dumps(signed_payload).encode('utf-8')
         aes_key = os.urandom(32)
         iv = os.urandom(12)
-
-        # 2. Criptografa o payload usando AES-GCM
         aesgcm = AESGCM(aes_key)
         encrypted_data = aesgcm.encrypt(iv, json_payload_bytes, None)
-        
         tag_length = 16
         ciphertext = encrypted_data[:-tag_length]
         tag = encrypted_data[-tag_length:]
 
-        # 3. Criptografa a chave AES usando a Chave Pública do Servidor (PKCS1v15)
+        # 5. Protege a chave AES com a chave pública RSA do servidor
         encrypted_aes_key = self.server_public_key.encrypt(
             aes_key,
             padding.PKCS1v15()
         )
 
-        # 4. Converte tudo para Base64 e inclui a chave pública do cliente
         envelope = {
             "encrypted_payload": base64.b64encode(ciphertext).decode('utf-8'),
             "encrypted_aes_key": base64.b64encode(encrypted_aes_key).decode('utf-8'),
             "iv": base64.b64encode(iv).decode('utf-8'),
-            "tag": base64.b64encode(tag).decode('utf-8'),
-            "client_public_key": self.client_public_key_pem
+            "tag": base64.b64encode(tag).decode('utf-8')
         }
         return envelope
 

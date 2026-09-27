@@ -3,7 +3,7 @@ import os
 import struct
 import stat
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils
 
 def _get_keys_dir():
     resources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'resources'))
@@ -92,7 +92,7 @@ def decrypt_data(key_handle, encrypted_data, provider_name=None):
 
 def sign_data(key_handle, payload_string, provider_name=None):
     """
-    Assina digitalmente dados com a chave privada RSA no macOS com SHA-256 e PKCS#1 v1.5.
+    Assina digitalmente dados com a chave privada RSA no macOS com SHA-256 e RSA-PSS.
     Retorna a assinatura em Base64.
     """
     if isinstance(payload_string, str):
@@ -103,7 +103,10 @@ def sign_data(key_handle, payload_string, provider_name=None):
     private_key = _load_private_key(key_handle)
     signature = private_key.sign(
         data_bytes,
-        padding.PKCS1v15(),
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
         hashes.SHA256()
     )
     return base64.b64encode(signature).decode('utf-8')

@@ -10,12 +10,19 @@ from ctypes import wintypes
 NCRYPT_OVERWRITE_KEY_FLAG = 0x00000080
 NCRYPT_PERSIST_FLAG = 0x80000000
 NCRYPT_PAD_PKCS1_FLAG = 0x00000002
+NCRYPT_PAD_PSS_FLAG   = 0x00000008
 BCRYPT_RSAPUBLIC_BLOB = "RSAPUBLICBLOB"
 NCRYPT_EXPORT_POLICY_PROPERTY = "Export Policy"
 NCRYPT_ALLOW_EXPORT_NONE = 0
 
 class BCRYPT_PKCS1_PADDING_INFO(ctypes.Structure):
     _fields_ = [("pszAlgId", wintypes.LPCWSTR)]
+
+class BCRYPT_PSS_PADDING_INFO(ctypes.Structure):
+    _fields_ = [
+        ("pszAlgId", wintypes.LPCWSTR),
+        ("cbSalt",   wintypes.ULONG)
+    ]
 
 ncrypt = None
 
@@ -227,6 +234,7 @@ def decrypt_data(key_handle, encrypted_data, provider_name="Microsoft Platform C
 def sign_data(key_handle, payload_string, provider_name="Microsoft Platform Crypto Provider"):
     """
     Assina digitalmente dados com a chave privada residente no TPM via NCryptSignHash.
+    Usa RSA-PSS com SHA-256 (estado da arte).
     Retorna a assinatura em Base64.
     """
     if isinstance(payload_string, str):
@@ -245,19 +253,20 @@ def sign_data(key_handle, payload_string, provider_name="Microsoft Platform Cryp
         if status != 0:
             raise RuntimeError(f"NCryptOpenKey falhou para chave '{key_handle}': {hex(status & 0xFFFFFFFF)}")
 
-        pad_info = BCRYPT_PKCS1_PADDING_INFO(pszAlgId="SHA256")
+        # RSA-PSS: salt length = digest size (32 bytes para SHA-256)
+        pad_info = BCRYPT_PSS_PADDING_INFO(pszAlgId="SHA256", cbSalt=32)
         cbResult = wintypes.DWORD(0)
 
         # 1. Consulta tamanho da assinatura
-        status = ncrypt.NCryptSignHash(hKey, ctypes.byref(pad_info), digest_arr, len(digest), None, 0, ctypes.byref(cbResult), NCRYPT_PAD_PKCS1_FLAG)
+        status = ncrypt.NCryptSignHash(hKey, ctypes.byref(pad_info), digest_arr, len(digest), None, 0, ctypes.byref(cbResult), NCRYPT_PAD_PSS_FLAG)
         if status != 0:
-            raise RuntimeError(f"NCryptSignHash size check falhou: {hex(status & 0xFFFFFFFF)}")
+            raise RuntimeError(f"NCryptSignHash (PSS) size check falhou: {hex(status & 0xFFFFFFFF)}")
 
         sig_arr = (ctypes.c_ubyte * cbResult.value)()
-        # 2. Executa a assinatura com o hardware
-        status = ncrypt.NCryptSignHash(hKey, ctypes.byref(pad_info), digest_arr, len(digest), sig_arr, cbResult.value, ctypes.byref(cbResult), NCRYPT_PAD_PKCS1_FLAG)
+        # 2. Executa a assinatura PSS com o hardware
+        status = ncrypt.NCryptSignHash(hKey, ctypes.byref(pad_info), digest_arr, len(digest), sig_arr, cbResult.value, ctypes.byref(cbResult), NCRYPT_PAD_PSS_FLAG)
         if status != 0:
-            raise RuntimeError(f"NCryptSignHash falhou: {hex(status & 0xFFFFFFFF)}")
+            raise RuntimeError(f"NCryptSignHash (PSS) falhou: {hex(status & 0xFFFFFFFF)}")
 
         return base64.b64encode(bytes(sig_arr[:cbResult.value])).decode('utf-8')
     finally:
