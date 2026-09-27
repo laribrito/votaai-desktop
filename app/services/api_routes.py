@@ -22,6 +22,8 @@ DEFAULT_ROUTES: Dict[str, Any] = {
     },
     "election": {
         "create": "/api/election/create/",
+        "list_available": "/api/election/available/",
+        "start": "/api/election/start/",
     },
     "system": {
         "ping": "/api/ping-desktop/",
@@ -49,6 +51,8 @@ def _load_routes() -> Dict[str, Any]:
     routes["CONFIRMAR_PRE_CADASTRO"] = auth_routes.get("confirmar_pre_cadastro", "/api/admin/pre-cadastro/confirmar/")
     routes["LOGIN"] = auth_routes.get("login", "/api/auth/login/")
     routes["ELECTION_CREATE"] = election_routes.get("create", "/api/election/create/")
+    routes["ELECTION_AVAILABLE"] = election_routes.get("list_available", "/api/election/available/")
+    routes["ELECTION_START"] = election_routes.get("start", "/api/election/start/")
     routes["PING"] = system_routes.get("ping", "/api/ping-desktop/")
     routes["PING_DESKTOP"] = routes["PING"]
 
@@ -65,4 +69,6 @@ class ApiRoutes:
     CONFIRMAR_PRE_CADASTRO: str = API_ROUTES["CONFIRMAR_PRE_CADASTRO"]
     LOGIN: str = API_ROUTES["LOGIN"]
     ELECTION_CREATE: str = API_ROUTES["ELECTION_CREATE"]
+    ELECTION_AVAILABLE: str = API_ROUTES["ELECTION_AVAILABLE"]
+    ELECTION_START: str = API_ROUTES["ELECTION_START"]
     PING: str = API_ROUTES["PING"]
