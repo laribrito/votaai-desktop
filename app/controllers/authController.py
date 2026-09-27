@@ -188,8 +188,8 @@ class AuthController(QObject):
                 with open(client_key_path, 'w', encoding='utf-8') as f:
                     json.dump(key_info, f, indent=4)
 
-            # Recarrega a chave pública no serviço de criptografia do http_client
-            _, client_pub_pem = self.http_client.encryption_service.reload_client_keys()
+            # Recarrega as chaves do cliente no controller de criptografia
+            self.http_client.encryption_controller.reload_client_keys()
 
             # 2. Envia para o backend (o HttpClient automaticamente envia o envelope cifrado híbrido)
             endpoint = "/api/admin/pre-cadastro/"
@@ -197,11 +197,11 @@ class AuthController(QObject):
             payload = {
                 "email": email,
                 "password": password,
-                "machine_public_key": client_pub_pem,
                 "device_id": device_id
             }
 
-            response = self.http_client.post(endpoint, payload)
+            # include_public_key=True pois o servidor ainda não possui a chave pública desta máquina
+            response = self.http_client.post(endpoint, payload, include_public_key=True)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem", "Erro ao iniciar pré-cadastro no servidor.")

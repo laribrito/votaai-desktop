@@ -11,7 +11,7 @@ class HttpClient:
         self.timeout = timeout
         self.base_url = config('API_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')
 
-    def post(self, endpoint, payload, custom_headers=None, timeout=None):
+    def post(self, endpoint, payload, custom_headers=None, timeout=None, include_public_key=False):
         url = endpoint if endpoint.startswith('http') else f"{self.base_url}{endpoint if endpoint.startswith('/') else '/' + endpoint}"
         headers = {'Content-Type': 'application/json'}
         if custom_headers:
@@ -19,9 +19,10 @@ class HttpClient:
             
         req_timeout = timeout if timeout is not None else self.timeout
 
-        # Criptografa o payload para todas as requisições
+        # Criptografa o payload (Sign-then-Encrypt).
+        # include_public_key=True apenas nas rotas de registro, onde o servidor ainda não possui a chave do cliente.
         try:
-            encrypted_payload = self.encryption_controller.encrypt_payload(payload)
+            encrypted_payload = self.encryption_controller.encrypt_payload(payload, include_public_key=include_public_key)
         except Exception as e:
             print(f"Erro ao criptografar o payload: {e}")
             return {"status": "erro", "mensagem": f"Erro interno de criptografia antes do envio: {str(e)}"}

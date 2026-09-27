@@ -113,12 +113,14 @@ class EncryptionController:
         self.client_key_info, self.client_public_key_pem = self._load_or_generate_client_hardware_keys()
         return self.client_key_info, self.client_public_key_pem
 
-    def encrypt_payload(self, payload_dict):
+    def encrypt_payload(self, payload_dict, include_public_key=False):
         """
         Implementa Sign-then-Encrypt:
           1. Serializa o payload canonicamente (chaves ordenadas, sem espaços).
           2. Assina com RSA-PSS + SHA-256 via chave privada residente no hardware.
-          3. Injeta 'signature' e 'client_public_key' no payload.
+          3. Injeta 'signature' no payload (obrigatório em todas as requisições).
+             'client_public_key' é injetado APENAS se include_public_key=True
+             (somente nas rotas de registro, onde o servidor ainda não possui a chave).
           4. Cifra o payload enriquecido com AES-256-GCM.
           5. Protege a chave AES com a chave pública RSA do servidor (PKCS1v15).
         """
@@ -141,10 +143,11 @@ class EncryptionController:
         except Exception as e:
             raise RuntimeError(f"Falha ao assinar o payload com a chave de hardware: {e}") from e
 
-        # 3. Enriquece o payload com a assinatura e a chave pública do cliente antes de cifrar
+        # 3. Enriquece o payload com a assinatura (obrigatória) e opcionalmente a chave pública
         signed_payload = dict(payload_dict)
         signed_payload["signature"] = signature_b64
-        signed_payload["client_public_key"] = self.client_public_key_pem
+        if include_public_key:
+            signed_payload["client_public_key"] = self.client_public_key_pem
 
         # 4. Cifra o payload enriquecido com AES-256-GCM
         json_payload_bytes = json.dumps(signed_payload).encode('utf-8')
