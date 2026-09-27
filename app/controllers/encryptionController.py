@@ -129,8 +129,14 @@ class EncryptionController:
             if not self.server_public_key:
                 raise RuntimeError("Chave pública do servidor não foi carregada corretamente.")
 
+        # Garante que o payload a ser assinado não contenha assinatura prévia
+        clean_payload = {k: v for k, v in payload_dict.items() if k != "signature"}
+        if include_public_key:
+            clean_payload["machine_public_key"] = self.client_public_key_pem
+            clean_payload["client_public_key"] = self.client_public_key_pem
+
         # 1. Serialização canônica — determinística, independente de plataforma
-        canonical_json = json.dumps(payload_dict, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        canonical_json = json.dumps(clean_payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
 
         # 2. Assina o JSON canônico com RSA-PSS via hardware (chave privada nunca sai do dispositivo)
         crypto_backend = CryptoController.get_backend()
@@ -143,11 +149,11 @@ class EncryptionController:
         except Exception as e:
             raise RuntimeError(f"Falha ao assinar o payload com a chave de hardware: {e}") from e
 
-        # 3. Enriquece o payload com a assinatura (obrigatória) e opcionalmente a chave pública
-        signed_payload = dict(payload_dict)
-        signed_payload["signature"] = signature_b64
-        if include_public_key:
-            signed_payload["client_public_key"] = self.client_public_key_pem
+        # 3. Enriquece o payload com a assinatura digital do hardware:
+        # Se o payload já possui assinatura específica do desafio (ex: email:totp_code), preserva-a;
+        # caso contrário, injeta a assinatura global do envelope (Sign-then-Encrypt).
+        signed_payload = dict(clean_payload)
+        signed_payload["signature"] = payload_dict.get("signature") or signature_b64
 
         # 4. Cifra o payload enriquecido com AES-256-GCM
         json_payload_bytes = json.dumps(signed_payload).encode('utf-8')

@@ -70,15 +70,15 @@ def _tpm2_generate_signing_key(handle, key_name):
             '-c', primary_ctx
         ], check=True, capture_output=True)
 
-        # 2. Cria chave RSA-PSS de assinatura sob a chave primária
+        # 2. Cria chave RSA para assinatura sob a chave primária
+        # Nota: não passamos --attributes manualmente para compatibilidade com diferentes versões do tpm2-tools
         subprocess.run([
             'tpm2_create',
-            '-G', 'rsa:rsapss:sha256',   # RSA com esquema PSS + SHA-256
+            '-G', 'rsa:rsapss',   # RSA com esquema PSS
             '-g', 'sha256',
             '-C', primary_ctx,
             '-u', key_pub,
             '-r', key_priv,
-            '--attributes', 'sign|fixedtpm|fixedparent|sensitivedataorigin|userwithauth'
         ], check=True, capture_output=True)
 
         # 3. Carrega a chave no TPM
