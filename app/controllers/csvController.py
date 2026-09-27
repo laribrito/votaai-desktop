@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Slot, Signal, Property, QAbstractTableModel,
 from app.controllers.cryptoController import CryptoController
 from app.services.election_api import ElectionApiService
 from app.services.http_client import HttpClient
+from app.services.api_routes import API_ROUTES
 
 class CsvTableModel(QAbstractTableModel):
     def __init__(self, data=None, headers=None, parent=None):
@@ -169,30 +170,22 @@ class CsvController(QObject):
                     "options": options
                 })
 
-        # 4. Gera a assinatura digital com a chave física da máquina registrada no TPM
-        ballot_repr = json.dumps(ballot, sort_keys=True)
-        college_repr = json.dumps(electoral_college, sort_keys=True)
-        canonical_str = f"{title}:{ballot_repr}:{college_repr}:{public_key}:{key_handle}"
-
-        crypto_backend = CryptoController.get_backend()
-        try:
-            signature = crypto_backend.sign_data("VotaAI_DesktopClient_Key", canonical_str)
-        except Exception as e:
-            print(f"Erro ao assinar payload da eleição: {e}")
-            signature = ""
-
-        # 5. Monta o payload final exclusivamente com campos em inglês
+        # 5. Monta o payload final exclusivamente com campos em inglês (snake_case)
         payload = {
             "title": title,
-            "publicKey": public_key,
-            "keyHandle": key_handle,
+            "public_key": public_key,
+            "key_handle": key_handle,
             "ballot": ballot,
-            "electoralCollege": electoral_college,
-            "signature": signature
+            "electoral_college": electoral_college
         }
         
         # 6. Envia para a API externa usando o serviço
         resultado = self.api_service.enviar_eleicao(payload)
+        if isinstance(resultado, dict):
+            dados = resultado.get("dados", {})
+            if isinstance(dados, dict) and dados.get("status") in ["error", "erro", "failed"]:
+                err = dados.get("message") or dados.get("mensagem") or dados.get("detail") or dados.get("error") or "Erro ao criar eleição."
+                return json.dumps({"status": "erro", "mensagem": err})
         return json.dumps(resultado)
 
     @Slot(str, str)
@@ -216,7 +209,7 @@ class CsvController(QObject):
         try:
             http_client = HttpClient()
             payload = {"ping": "Hello from Desktop"}
-            response = http_client.post("http://127.0.0.1:8000/api/ping-desktop/", payload)
+            response = http_client.post(API_ROUTES["system"]["ping"], payload)
             return json.dumps(response, ensure_ascii=False, indent=2)
         except Exception as e:
             return f"Erro ao conectar: {str(e)}"
