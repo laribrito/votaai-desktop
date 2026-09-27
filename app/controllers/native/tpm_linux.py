@@ -10,8 +10,28 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# Handle persistente no TPM para a chave de assinatura do cliente VotaAI
+# Handles persistentes no TPM para as chaves do cliente VotaAI
+TPM2_KEY_HANDLES = {
+    "VotaAI_DesktopClient_Key": "0x81010010",
+    "votaai_desktop_hw_key": "0x81010020",
+}
 TPM2_SIGNING_HANDLE = "0x81010010"
+
+def _get_tpm_handle(key_name):
+    """Retorna o handle persistente no TPM correspondente ao key_name."""
+    if key_name in TPM2_KEY_HANDLES:
+        return TPM2_KEY_HANDLES[key_name]
+    meta_path = _get_key_meta_path(key_name)
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+                if meta.get("TPMHandle"):
+                    return meta.get("TPMHandle")
+        except Exception:
+            pass
+    h = int(hashlib.sha256(key_name.encode('utf-8')).hexdigest()[:4], 16) % 0x60
+    return f"0x8101{0x30 + h:04x}"
 
 def _get_resources_dir():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'resources'))
@@ -74,7 +94,7 @@ def _tpm2_generate_signing_key(handle, key_name):
         # Nota: não passamos --attributes manualmente para compatibilidade com diferentes versões do tpm2-tools
         subprocess.run([
             'tpm2_create',
-            '-G', 'rsa:rsapss',   # RSA com esquema PSS
+            '-G', 'rsa',   # RSA com esquema PSS
             '-g', 'sha256',
             '-C', primary_ctx,
             '-u', key_pub,
@@ -138,6 +158,29 @@ def _tpm2_sign(handle, data_str):
             sig_bytes = f.read()
 
     return base64.b64encode(sig_bytes).decode('utf-8')
+
+def _tpm2_decrypt(handle, cipher_bytes):
+    """
+    Descriptografa dados usando a chave privada residente no TPM 2.0 (RSA PKCS#1 v1.5).
+    O dado cifrado entra no chip, apenas o plaintext sai. Retorna bytes.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        enc_path = os.path.join(tmpdir, 'enc.bin')
+        dec_path = os.path.join(tmpdir, 'dec.bin')
+
+        with open(enc_path, 'wb') as f:
+            f.write(cipher_bytes)
+
+        subprocess.run([
+            'tpm2_rsadecrypt',
+            '-c', handle,
+            '-s', 'rsaes',     # RSA PKCS#1 v1.5
+            '-o', dec_path,
+            enc_path
+        ], check=True, capture_output=True)
+
+        with open(dec_path, 'rb') as f:
+            return f.read()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Software fallback: chave cifrada com segredo derivado do machine-id
@@ -266,15 +309,16 @@ def generate_rsa_key(key_name="VotaAI_DesktopClient_Key"):
     - Fallback software: chave cifrada com AES-256-GCM + machine-id (nunca em plaintext no disco).
     Retorna dict compatível com a interface do CryptoController.
     """
-    meta_path = _get_key_meta_path(key_name)
-    use_tpm   = _tpm2_available()
+    meta_path  = _get_key_meta_path(key_name)
+    use_tpm    = _tpm2_available()
+    tpm_handle = _get_tpm_handle(key_name)
 
     if use_tpm:
         try:
-            pub_pem = _tpm2_generate_signing_key(TPM2_SIGNING_HANDLE, key_name)
+            pub_pem = _tpm2_generate_signing_key(tpm_handle, key_name)
             provider = "Linux TPM 2.0 (tpm2-tools)"
             storage  = "tpm2"
-            print(f"[VotaAI] Chave gerada no TPM 2.0 hardware (handle {TPM2_SIGNING_HANDLE}). Chave privada NÃO exportada.")
+            print(f"[VotaAI] Chave gerada no TPM 2.0 hardware (handle {tpm_handle}). Chave privada NÃO exportada.")
         except Exception as e:
             print(f"[VotaAI] Falha no TPM 2.0: {e}. Usando fallback software cifrado.")
             use_tpm  = False
@@ -296,7 +340,7 @@ def generate_rsa_key(key_name="VotaAI_DesktopClient_Key"):
         "Algorithm": "RSA",
         "Provider": provider,
         "Storage": storage,
-        "TPMHandle": TPM2_SIGNING_HANDLE if storage == "tpm2" else None
+        "TPMHandle": tpm_handle if storage == "tpm2" else None
     }
 
     with open(meta_path, 'w') as f:
@@ -309,16 +353,56 @@ def generate_rsa_key(key_name="VotaAI_DesktopClient_Key"):
     return meta
 
 def generate_key():
-    """Interface legada."""
-    info = generate_rsa_key("votaai_desktop_hw_key")
+    """Interface legada para a chave de eleição. Reutiliza a chave existente se disponível."""
+    key_name = "votaai_desktop_hw_key"
+    meta_path = _get_key_meta_path(key_name)
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+            if meta.get("Storage") == "tpm2":
+                h = meta.get("TPMHandle")
+                if h and _tpm2_handle_exists(h):
+                    return meta.get("PublicKeyBase64"), meta.get("KeyName")
+            elif meta.get("Storage") == "software-encrypted":
+                enc_path = _get_encrypted_key_path(key_name)
+                if os.path.exists(enc_path):
+                    return meta.get("PublicKeyBase64"), meta.get("KeyName")
+        except Exception:
+            pass
+
+    info = generate_rsa_key(key_name)
     return info.get("PublicKeyBase64"), info.get("KeyName")
 
 def decrypt_data(key_handle, encrypted_data, provider_name=None):
-    """Descriptografa dados usando a chave privada RSA (software path)."""
+    """
+    Descriptografa dados usando a chave privada RSA (PKCS#1 v1.5).
+    - Se a chave reside no TPM: descriptografa diretamente no hardware via tpm2_rsadecrypt.
+    - Se fallback software: decifra via cryptography na memória.
+    """
     if isinstance(encrypted_data, str):
         cipher_bytes = base64.b64decode(encrypted_data)
     else:
         cipher_bytes = encrypted_data
+
+    meta_path = _get_key_meta_path(key_handle)
+    storage = "software-encrypted"
+    tpm_handle = _get_tpm_handle(key_handle)
+
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+            storage = meta.get("Storage", "software-encrypted")
+            tpm_handle = meta.get("TPMHandle") or tpm_handle
+        except Exception:
+            pass
+
+    if storage == "tpm2" and _tpm2_available():
+        try:
+            return _tpm2_decrypt(tpm_handle, cipher_bytes)
+        except Exception as e:
+            print(f"[VotaAI] Falha na descriptografia TPM 2.0: {e}. Tentando software fallback.")
 
     private_key = _software_load_private_key(key_handle)
     return private_key.decrypt(cipher_bytes, padding.PKCS1v15())
@@ -329,21 +413,37 @@ def sign_data(key_handle, payload_string, provider_name=None):
     - Se TPM disponível: operação ocorre dentro do chip (chave privada nunca sai do hardware).
     - Fallback: chave decifrada na memória, assinatura em software, memória limpa ao finalizar.
     """
-    meta_path = _get_key_meta_path(key_handle)
-    storage   = "software-encrypted"  # default
+    meta_path  = _get_key_meta_path(key_handle)
+    storage    = "software-encrypted"  # default
+    tpm_handle = _get_tpm_handle(key_handle)
 
     if os.path.exists(meta_path):
         try:
-            with open(meta_path) as f:
+            with open(meta_path, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
             storage = meta.get("Storage", "software-encrypted")
+            tpm_handle = meta.get("TPMHandle") or tpm_handle
         except Exception:
             pass
 
     if storage == "tpm2" and _tpm2_available():
         try:
-            return _tpm2_sign(TPM2_SIGNING_HANDLE, payload_string)
+            return _tpm2_sign(tpm_handle, payload_string)
         except Exception as e:
             print(f"[VotaAI] Falha na assinatura TPM 2.0: {e}. Usando fallback software.")
 
     return _software_sign(key_handle, payload_string)
+
+def generate_random(num_bytes=32):
+    """
+    Gera bytes aleatórios usando TPM se disponível, fallback para secrets.
+    """
+    if _tpm2_available():
+        try:
+            res = subprocess.run(["tpm2_getrandom", "--hex", str(num_bytes)], capture_output=True, text=True, check=True)
+            return res.stdout.strip()
+        except Exception as e:
+            print(f"[VotaAI] Aviso: falha ao gerar random via TPM ({e}). Usando fallback.")
+            
+    import secrets
+    return secrets.token_hex(num_bytes)
