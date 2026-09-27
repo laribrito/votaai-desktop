@@ -11,6 +11,7 @@ from decouple import config
 
 from app.controllers.cryptoController import CryptoController
 from app.services.http_client import HttpClient
+from app.services.api_routes import API_ROUTES
 from app.controllers.deviceController import DeviceController
 import qrcode
 
@@ -35,6 +36,7 @@ class AuthController(QObject):
         self._is_authenticated = False
         self._auth_token = None
         self._is_loading = False
+        self._pending_password = ""
 
     def _get_registration_path(self):
         return os.path.join(self.resources_dir, 'registration_info.json')
@@ -93,6 +95,8 @@ class AuthController(QObject):
     @Property(str, notify=registrationStatusChanged)
     def registeredUserName(self):
         data = self._read_registration_data()
+        if data.get("name"):
+            return data["name"]
         if data.get("nome"):
             return data["nome"]
         email = data.get("email", "")
@@ -115,7 +119,7 @@ class AuthController(QObject):
     @Property(str, notify=registrationStatusChanged)
     def registeredDeviceId(self):
         data = self._read_registration_data()
-        return data.get("usuario_maquina", "")
+        return data.get("device_id") or data.get("usuario_maquina", "")
 
     @Property(str, notify=registrationStatusChanged)
     def registeredDate(self):
@@ -165,6 +169,8 @@ class AuthController(QObject):
         if len(password) < 8:
             return json.dumps({"status": "erro", "mensagem": "A senha deve conter no mínimo 8 caracteres com letras, números e símbolos."})
 
+        self._pending_password = password
+
         if self.isRegistered:
             return json.dumps({
                 "status": "erro",
@@ -188,23 +194,26 @@ class AuthController(QObject):
                 with open(client_key_path, 'w', encoding='utf-8') as f:
                     json.dump(key_info, f, indent=4)
 
-            # Recarrega a chave pública no serviço de criptografia do http_client
-            _, client_pub_pem = self.http_client.encryption_service.reload_client_keys()
+            # Recarrega as chaves do cliente no controller de criptografia
+            self.http_client.encryption_controller.reload_client_keys()
 
             # 2. Envia para o backend (o HttpClient automaticamente envia o envelope cifrado híbrido)
-            endpoint = "/api/admin/pre-cadastro/"
+            endpoint = API_ROUTES["auth"]["pre_cadastro"]
             device_id = DeviceController().get_device_id()
+            client_pub_pem = self.http_client.encryption_controller.client_public_key_pem
             payload = {
                 "email": email,
                 "password": password,
+                "device_id": device_id,
                 "machine_public_key": client_pub_pem,
-                "device_id": device_id
+                "client_public_key": client_pub_pem
             }
 
-            response = self.http_client.post(endpoint, payload)
+            # include_public_key=True pois o servidor ainda não possui a chave pública desta máquina
+            response = self.http_client.post(endpoint, payload, include_public_key=True)
 
             if response.get("status") != "sucesso":
-                msg = response.get("mensagem", "Erro ao iniciar pré-cadastro no servidor.")
+                msg = response.get("mensagem") or response.get("message") or "Erro ao iniciar pré-cadastro no servidor."
                 if isinstance(msg, dict):
                     parts = []
                     for k, v in msg.items():
@@ -222,8 +231,50 @@ class AuthController(QObject):
                 except Exception:
                     dados = {"mensagem": dados}
 
-            uri_provisionamento = dados.get("uri_provisionamento", "")
+            payload_data = dados
+            if isinstance(dados, dict):
+                # Se o servidor retornou status de erro dentro do payload cifrado
+                if dados.get("status") in ["error", "erro", "failed"]:
+                    err = (
+                        dados.get("message")
+                        or dados.get("mensagem")
+                        or dados.get("detail")
+                        or dados.get("error")
+                        or "Erro ao iniciar pré-cadastro no servidor."
+                    )
+                    if isinstance(err, dict):
+                        err = "; ".join(f"{k}: {v}" for k, v in err.items())
+                    return json.dumps({"status": "erro", "mensagem": str(err)})
+
+                if isinstance(dados.get("data"), dict):
+                    payload_data = {**dados, **dados["data"]}
+                elif isinstance(dados.get("dados"), dict):
+                    payload_data = {**dados, **dados["dados"]}
+
+            # Procura a URI de provisionamento TOTP por chaves em inglês e português
+            uri_provisionamento = (
+                payload_data.get("provisioning_uri")
+                or payload_data.get("uri_provisionamento")
+                or payload_data.get("totp_uri")
+                or payload_data.get("otpauth_url")
+                or payload_data.get("otp_uri")
+                or payload_data.get("uri")
+                or payload_data.get("provisioning_url")
+                or ""
+            )
+
             if not uri_provisionamento:
+                server_msg = (
+                    payload_data.get("message")
+                    or payload_data.get("mensagem")
+                    or payload_data.get("detail")
+                    or payload_data.get("error")
+                )
+                if server_msg:
+                    return json.dumps({
+                        "status": "erro",
+                        "mensagem": f"Servidor: {server_msg}"
+                    })
                 return json.dumps({
                     "status": "erro",
                     "mensagem": "URI de provisionamento TOTP não recebida do servidor."
@@ -239,18 +290,34 @@ class AuthController(QObject):
             qr_base64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
 
             # 4. Extrai o segredo para inserção manual caso necessário
-            secret = ""
-            try:
-                parsed = urllib.parse.urlparse(uri_provisionamento)
-                query = urllib.parse.parse_qs(parsed.query)
-                secret = query.get("secret", [""])[0]
-            except Exception:
-                pass
+            secret = (
+                payload_data.get("secret")
+                or payload_data.get("totp_secret")
+                or payload_data.get("secret_key")
+                or payload_data.get("base32_secret")
+                or payload_data.get("segredo")
+                or ""
+            )
+            if not secret and uri_provisionamento:
+                try:
+                    parsed = urllib.parse.urlparse(uri_provisionamento)
+                    query = urllib.parse.parse_qs(parsed.query)
+                    secret = query.get("secret", [""])[0]
+                except Exception:
+                    pass
+
+            success_msg = (
+                payload_data.get("message")
+                or payload_data.get("mensagem")
+                or "Pré-cadastro iniciado com sucesso."
+            )
 
             return json.dumps({
                 "status": "sucesso",
-                "mensagem": dados.get("mensagem", "Pré-cadastro iniciado com sucesso."),
+                "mensagem": success_msg,
+                "message": success_msg,
                 "uri_provisionamento": uri_provisionamento,
+                "provisioning_uri": uri_provisionamento,
                 "secret": secret,
                 "qr_path": os.path.abspath(qr_file_path).replace("\\", "/"),
                 "qr_base64": qr_base64
@@ -277,40 +344,48 @@ class AuthController(QObject):
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _execute_confirmar_pre_cadastro(self, email: str, codigo_totp: str) -> str:
+    def _execute_confirmar_pre_cadastro(self, email: str, codigo_totp: str, password: str = "") -> str:
         """Execução síncrona do passo 2 do fluxo."""
         email = (email or '').strip()
         codigo_totp = (codigo_totp or '').strip()
+        password = (password or '').strip() or self._pending_password
 
         if not email:
             return json.dumps({"status": "erro", "mensagem": "O e-mail é obrigatório."})
+        if not password:
+            return json.dumps({"status": "erro", "mensagem": "A senha é obrigatória."})
         if not codigo_totp:
             return json.dumps({"status": "erro", "mensagem": "O código TOTP é obrigatório."})
         if len(codigo_totp) != 6 or not codigo_totp.isdigit():
             return json.dumps({"status": "erro", "mensagem": "O código TOTP deve conter exatamente 6 dígitos numéricos."})
 
         try:
-            # 1. Assina o payload com a chave privada residente no chip de hardware TPM
-            payload_to_sign = f"{email}:{codigo_totp}"
-            crypto_backend = CryptoController.get_backend()
-            assinatura = crypto_backend.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
-
-            # 2. Envia para o backend
-            endpoint = "/api/admin/pre-cadastro/confirmar/"
+            # 2. Envia para o backend (o HttpClient/EncryptionController preserva a assinatura e criptografa)
+            # O encryptionController cuidará da assinatura do envelope completo (Sign-then-Encrypt)
+            endpoint = API_ROUTES["auth"]["confirmar_pre_cadastro"]
+            device_id = DeviceController().get_device_id()
+            client_pub_pem = self.http_client.encryption_controller.client_public_key_pem
             payload = {
                 "email": email,
+                "password": password,
                 "totp_code": codigo_totp,
-                "codigo_totp": codigo_totp,
-                "signature": assinatura,
-                "assinatura": assinatura
+                "device_id": device_id,
+                "machine_public_key": client_pub_pem,
+                "client_public_key": client_pub_pem
             }
 
-            response = self.http_client.post(endpoint, payload)
+            response = self.http_client.post(endpoint, payload, include_public_key=True)
 
             if response.get("status") != "sucesso":
-                msg = response.get("mensagem", "Código TOTP inválido ou falha de validação.")
+                msg = response.get("mensagem") or response.get("message") or "Código TOTP inválido ou falha de validação."
                 if isinstance(msg, dict):
-                    msg = "; ".join(f"{k}: {v}" for k, v in msg.items())
+                    parts = []
+                    for k, v in msg.items():
+                        if isinstance(v, list):
+                            parts.append(f"{k.capitalize()}: {'; '.join(str(x) for x in v)}")
+                        else:
+                            parts.append(f"{k.capitalize()}: {v}")
+                    msg = " ".join(parts)
                 return json.dumps({"status": "erro", "mensagem": str(msg)})
 
             dados = response.get("dados", {})
@@ -320,28 +395,57 @@ class AuthController(QObject):
                 except Exception:
                     dados = {"mensagem": dados}
 
+            payload_data = dados
+            if isinstance(dados, dict):
+                if dados.get("status") in ["error", "erro", "failed"]:
+                    err = (
+                        dados.get("message")
+                        or dados.get("mensagem")
+                        or dados.get("detail")
+                        or dados.get("error")
+                        or "Código TOTP inválido ou falha de validação."
+                    )
+                    if isinstance(err, dict):
+                        err = "; ".join(f"{k}: {v}" for k, v in err.items())
+                    return json.dumps({"status": "erro", "mensagem": str(err)})
+
+                if isinstance(dados.get("data"), dict):
+                    payload_data = {**dados, **dados["data"]}
+                elif isinstance(dados.get("dados"), dict):
+                    payload_data = {**dados, **dados["dados"]}
+
             # 3. Salva a informação de registro com sucesso localmente
             reg_info = {
                 "is_registered": True,
                 "email": email,
-                "usuario_maquina": DeviceController().get_device_id(),
+                "device_id": device_id,
+                "usuario_maquina": device_id,
                 "confirmed_at": datetime.now().isoformat()
             }
             with open(self._get_registration_path(), 'w', encoding='utf-8') as f:
                 json.dump(reg_info, f, indent=4)
 
+            self._pending_password = ""
             self.registrationStatusChanged.emit()
+
+            success_msg = (
+                payload_data.get("message")
+                or payload_data.get("mensagem")
+                or "Administrador ativado e máquina vinculada com sucesso!"
+            )
 
             return json.dumps({
                 "status": "sucesso",
-                "mensagem": dados.get("mensagem", "Administrador ativado e máquina vinculada com sucesso!")
+                "mensagem": success_msg,
+                "message": success_msg
             })
 
         except Exception as e:
             return json.dumps({"status": "erro", "mensagem": f"Erro na confirmação: {str(e)}"})
 
     @Slot(str, str)
-    def confirmarPreCadastro(self, email: str, codigo_totp: str):
+    @Slot(str, str, str)
+    def confirmarPreCadastro(self, email: str, codigo_totp: str, password: str = ""):
         """
         Dispara a confirmação de pré-cadastro em segundo plano (assíncrono).
         Emite o sinal confirmarPreCadastroFinished(resJson) ao terminar.
@@ -349,7 +453,7 @@ class AuthController(QObject):
         self._set_loading(True)
         def _worker():
             try:
-                res = self._execute_confirmar_pre_cadastro(email, codigo_totp)
+                res = self._execute_confirmar_pre_cadastro(email, codigo_totp, password)
             except Exception as e:
                 res = json.dumps({"status": "erro", "mensagem": f"Erro na confirmação: {str(e)}"})
             finally:
@@ -393,31 +497,19 @@ class AuthController(QObject):
             return json.dumps({"status": "erro", "mensagem": "Nenhum administrador registrado nesta máquina."})
 
         try:
-            # 1. Gera assinatura digital RSA da máquina com o código TOTP
-            payload_to_sign = f"{email}:{codigo_totp}"
-            try:
-                crypto_backend = CryptoController.get_backend()
-                assinatura = crypto_backend.sign_data("VotaAI_DesktopClient_Key", payload_to_sign)
-            except Exception as se:
-                assinatura = ""
-                print(f"Aviso de assinatura TPM: {se}")
-
-            endpoint = "/api/auth/login/"
+            endpoint = API_ROUTES["auth"]["login"]
             payload = {
                 "username": email,
+                "email": email,
                 "password": senha,
                 "totp_code": codigo_totp,
-                "signature": assinatura,
-                "device_id": self.registeredDeviceId,
-                "codigo_totp": codigo_totp,
-                "assinatura": assinatura,
-                "usuario_maquina": self.registeredDeviceId
+                "device_id": self.registeredDeviceId
             }
 
             response = self.http_client.post(endpoint, payload)
 
             if response.get("status") != "sucesso":
-                msg = response.get("mensagem", "Falha na autenticação.")
+                msg = response.get("mensagem") or response.get("message") or "Falha na autenticação."
                 if isinstance(msg, str):
                     try:
                         msg = json.loads(msg)
@@ -451,6 +543,10 @@ class AuthController(QObject):
                             msg = detail
                     elif "error" in msg:
                         msg = str(msg["error"])
+                    elif "message" in msg:
+                        msg = str(msg["message"])
+                    elif "mensagem" in msg:
+                        msg = str(msg["mensagem"])
                     elif "non_field_errors" in msg:
                         msg = " ".join(str(x) for x in msg["non_field_errors"])
                     else:
@@ -470,14 +566,45 @@ class AuthController(QObject):
                 except Exception:
                     dados = {"token": dados}
 
-            token = dados.get("token") or dados.get("access") or ""
+            payload_data = dados
+            if isinstance(dados, dict):
+                if dados.get("status") in ["error", "erro", "failed"]:
+                    err = (
+                        dados.get("message")
+                        or dados.get("mensagem")
+                        or dados.get("detail")
+                        or dados.get("error")
+                        or "Falha na autenticação."
+                    )
+                    if isinstance(err, dict):
+                        err = "; ".join(f"{k}: {v}" for k, v in err.items())
+                    return json.dumps({"status": "erro", "mensagem": str(err)})
+
+                if isinstance(dados.get("data"), dict):
+                    payload_data = {**dados, **dados["data"]}
+                elif isinstance(dados.get("dados"), dict):
+                    payload_data = {**dados, **dados["dados"]}
+
+            token = (
+                payload_data.get("token")
+                or payload_data.get("access")
+                or payload_data.get("access_token")
+                or ""
+            )
             self._auth_token = token
             self._is_authenticated = True
             self.authenticationStatusChanged.emit()
 
+            success_msg = (
+                payload_data.get("message")
+                or payload_data.get("mensagem")
+                or "Autenticação em dois fatores realizada com sucesso!"
+            )
+
             return json.dumps({
                 "status": "sucesso",
-                "mensagem": "Autenticação em dois fatores realizada com sucesso!",
+                "mensagem": success_msg,
+                "message": success_msg,
                 "token": token
             })
         except Exception as e:

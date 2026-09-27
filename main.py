@@ -36,6 +36,14 @@ if __name__ == "__main__":
     auth_controller = AuthController()
     engine.rootContext().setContextProperty("authController", auth_controller)
     
+    from app.controllers.electionController import ElectionController
+    election_controller = ElectionController(csv_controller=backend)
+    engine.rootContext().setContextProperty("electionController", election_controller)
+    
+    from app.controllers.startElectionController import StartElectionController
+    start_election_controller = StartElectionController()
+    engine.rootContext().setContextProperty("startElectionController", start_election_controller)
+    
     # Adicionando o caminho de importação das pastas do projeto QML (necessário pro Qt encontrar a pasta design)
     qml_dir = Path(__file__).parent / "Design"
     engine.addImportPath(str(qml_dir))
