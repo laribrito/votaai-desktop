@@ -506,7 +506,7 @@ class AuthController(QObject):
                 "device_id": self.registeredDeviceId
             }
 
-            response = self.http_client.post(endpoint, payload)
+            response = self.http_client.post(endpoint, payload, include_public_key=True)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem") or response.get("message") or "Falha na autenticação."
