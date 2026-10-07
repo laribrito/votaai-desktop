@@ -14,5 +14,5 @@ class ElectionApiService:
         criptográfico híbrido AES-GCM + RSA do TPM.
         """
         endpoint = API_ROUTES["election"]["create"]
-        return self.http_client.post(endpoint, payload)
+        return self.http_client.post(endpoint, payload, include_public_key=True)
 
