@@ -132,8 +132,10 @@ class EncryptionController:
         # Garante que o payload a ser assinado não contenha assinatura prévia
         clean_payload = {k: v for k, v in payload_dict.items() if k != "signature"}
         if include_public_key:
-            clean_payload["machine_public_key"] = self.client_public_key_pem
-            clean_payload["client_public_key"] = self.client_public_key_pem
+            if "machine_public_key" not in clean_payload:
+                clean_payload["machine_public_key"] = self.client_public_key_pem
+            if "client_public_key" in payload_dict:
+                clean_payload["client_public_key"] = self.client_public_key_pem
 
         # 1. Serialização canônica — determinística, independente de plataforma
         canonical_json = json.dumps(clean_payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
