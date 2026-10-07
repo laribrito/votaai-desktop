@@ -58,11 +58,11 @@ class ElectionController(QObject):
                 if isinstance(opt, str):
                     opt_str = opt.strip()
                     if opt_str:
-                        options.append({"title": opt_str, "position": idx + 1})
+                        options.append({"label": opt_str, "title": opt_str, "position": idx + 1})
                 elif isinstance(opt, dict):
-                    title_opt = (opt.get("title") or opt.get("opcao") or opt.get("text") or "").strip()
+                    title_opt = (opt.get("label") or opt.get("title") or opt.get("opcao") or opt.get("text") or "").strip()
                     if title_opt:
-                        options.append({"title": title_opt, "position": opt.get("position", idx + 1)})
+                        options.append({"label": title_opt, "title": title_opt, "position": opt.get("position", idx + 1)})
 
             if question_text and options:
                 ballot.append({
