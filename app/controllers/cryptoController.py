@@ -43,3 +43,16 @@ class CryptoController:
         """
         return self.backend.sign_data(key_handle, payload_string, provider_name=provider_name)
 
+    def generate_random(self, num_bytes=32):
+        """
+        Gera bytes aleatórios de alta entropia.
+        Utiliza o RNG do TPM, se disponível, ou o OS random/secrets como fallback.
+        Retorna string em hexadecimal.
+        """
+        backend_name = getattr(self.backend, '__name__', str(self.backend))
+        if hasattr(self.backend, 'generate_random'):
+            print(f"[CryptoController] Solicitando geração de número aleatório ({num_bytes} bytes) via backend '{backend_name}'...")
+            return self.backend.generate_random(num_bytes)
+        print(f"[CryptoController] Backend '{backend_name}' não possui generate_random. Gerando número aleatório ({num_bytes} bytes) via software (secrets)...")
+        import secrets
+        return secrets.token_hex(num_bytes)

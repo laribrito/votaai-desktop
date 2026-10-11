@@ -71,3 +71,23 @@ python main.py
 - **Windows:** Integração com TPM nativo via **Windows CNG (`ncrypt.dll`)**.
 - **Linux / macOS:** Provedor seguro via [tpm_linux.py](file:///home/debrito/Programação/votaai-desktop/app/controllers/native/tpm_linux.py) e [enclave_mac.py](file:///home/debrito/Programação/votaai-desktop/app/controllers/native/enclave_mac.py) com chaves protegidas e permissões estritas de arquivo (`0600`).
 - **Comunicação Segura:** Todos os payloads trafegam em envelopes cifrados com **AES-GCM**, onde a chave AES é protegida pela chave pública RSA do servidor e assinada com a chave privada residente no dispositivo.
+
+---
+
+## 📂 Estrutura de Pastas
+
+A organização do repositório foi planejada para separar claramente a interface (UI) das regras de negócio (Python) e serviços de rede:
+
+```text
+votaai-desktop/
+├── app/                  # Lógica de negócio e comunicação em Python
+│   ├── controllers/      # Controladores que integram as telas (QML) com as ações do sistema (ex: AuthController)
+│   ├── services/         # Serviços puramente de API e rede (ex: HttpClient, ElectionApi)
+│   └── resources/        # Arquivos locais e de chaves criptográficas (ex: initial_key.json)
+├── Design/               # Interface de Usuário (UI)
+│   └── DesignContent/    # Componentes visuais e telas desenvolvidos em Qt Quick / QML
+├── mock_csvs/            # Arquivos CSV usados para testes locais
+├── main.py               # Arquivo principal que inicia a aplicação PySide6
+├── run_commands.py       # Script utilitário para facilitar comandos do Git/CLI do projeto
+└── requirements.txt      # Arquivo de dependências do Python
+```

@@ -96,6 +96,7 @@ CadastroForm {
         errorMessage = ""
         var email = emailInput.text.trim()
         var totp = totpInput.text.trim()
+        var senha = passwordInput.text
 
         if (!totp || totp.length !== 6) {
             errorMessage = "Por favor, digite o código de 6 dígitos gerado pelo aplicativo autenticador."
@@ -103,7 +104,7 @@ CadastroForm {
         }
 
         isLoading = true
-        authController.confirmarPreCadastro(email, totp)
+        authController.confirmarPreCadastro(email, totp, senha)
     }
 
     // Ação: Copiar chave manual

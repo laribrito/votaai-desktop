@@ -63,11 +63,11 @@ CriacaoForm {
                 })
             }
         }
-        backend.createElection(textInput.text, JSON.stringify(ballot))
+        electionController.createElection(textInput.text, JSON.stringify(ballot))
     }
 
     Connections {
-        target: backend
+        target: electionController
         function onCreateElectionFinished(resStr) {
             isLoading = false
             console.log("Resultado da criação da eleição:", resStr)

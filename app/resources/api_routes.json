@@ -1,0 +1,15 @@
+{
+  "auth": {
+    "pre_cadastro": "/api/admin/pre-registration/",
+    "confirmar_pre_cadastro": "/api/admin/pre-registration/confirm/",
+    "login": "/api/auth/login/"
+  },
+  "election": {
+    "create": "/api/election/create/",
+    "list_available": "/api/election/available/",
+    "start": "/api/election/start/"
+  },
+  "system": {
+    "ping": "/api/ping-desktop/"
+  }
+}
