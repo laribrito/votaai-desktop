@@ -1,3 +1,31 @@
+## v0.8.0 (2026-10-11)
+
+### Feat
+
+- **election**: implement StartElectionController and integrate start election flow in QML
+- **api**: add election start and availability routes with enhanced HTTP logging
+- **crypto**: add TPM 2.0 decryption, dynamic handles, and hardware RNG
+- **api**: centralize API routes configuration
+
+### Fix
+
+- **election**: include machine public key in start election requests
+- **election**: include machine public key in election creation request
+- **election**: add label field to ballot options for backend schema compatibility
+- **auth**: include machine public key in authentication request
+- **crypto**: refine public key injection in payload signing
+- **crypto**: improve TPM tool compatibility and payload signing structure
+
+### Refactor
+
+- **api**: centralize endpoints in json and remove duplicated route definitions
+- **crypto**: log origin of random number generation across platforms
+- **election**: align election start and create payloads with backend contract
+- **auth**: enforce strict device_id and remove duplicate key fields
+- **crypto**: always inject machine_public_key and remove client_public_key duplicate
+- **election**: extract election creation from csvController into ElectionController
+- **auth, csv**: enforce envelope signature for payloads and snake_case in election creation
+
 ## v0.7.0 (2026-09-26)
 
 ### Feat
