@@ -119,7 +119,7 @@ class AuthController(QObject):
     @Property(str, notify=registrationStatusChanged)
     def registeredDeviceId(self):
         data = self._read_registration_data()
-        return data.get("device_id") or data.get("usuario_maquina", "")
+        return data.get("device_id", "")
 
     @Property(str, notify=registrationStatusChanged)
     def registeredDate(self):
@@ -200,17 +200,13 @@ class AuthController(QObject):
             # 2. Envia para o backend (o HttpClient automaticamente envia o envelope cifrado híbrido)
             endpoint = API_ROUTES["auth"]["pre_cadastro"]
             device_id = DeviceController().get_device_id()
-            client_pub_pem = self.http_client.encryption_controller.client_public_key_pem
             payload = {
                 "email": email,
                 "password": password,
-                "device_id": device_id,
-                "machine_public_key": client_pub_pem,
-                "client_public_key": client_pub_pem
+                "device_id": device_id
             }
 
-            # include_public_key=True pois o servidor ainda não possui a chave pública desta máquina
-            response = self.http_client.post(endpoint, payload, include_public_key=True)
+            response = self.http_client.post(endpoint, payload)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem") or response.get("message") or "Erro ao iniciar pré-cadastro no servidor."
@@ -364,17 +360,13 @@ class AuthController(QObject):
             # O encryptionController cuidará da assinatura do envelope completo (Sign-then-Encrypt)
             endpoint = API_ROUTES["auth"]["confirmar_pre_cadastro"]
             device_id = DeviceController().get_device_id()
-            client_pub_pem = self.http_client.encryption_controller.client_public_key_pem
             payload = {
                 "email": email,
-                "password": password,
                 "totp_code": codigo_totp,
-                "device_id": device_id,
-                "machine_public_key": client_pub_pem,
-                "client_public_key": client_pub_pem
+                "device_id": device_id
             }
 
-            response = self.http_client.post(endpoint, payload, include_public_key=True)
+            response = self.http_client.post(endpoint, payload)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem") or response.get("message") or "Código TOTP inválido ou falha de validação."
@@ -419,7 +411,6 @@ class AuthController(QObject):
                 "is_registered": True,
                 "email": email,
                 "device_id": device_id,
-                "usuario_maquina": device_id,
                 "confirmed_at": datetime.now().isoformat()
             }
             with open(self._get_registration_path(), 'w', encoding='utf-8') as f:
@@ -500,13 +491,12 @@ class AuthController(QObject):
             endpoint = API_ROUTES["auth"]["login"]
             payload = {
                 "username": email,
-                "email": email,
                 "password": senha,
                 "totp_code": codigo_totp,
                 "device_id": self.registeredDeviceId
             }
 
-            response = self.http_client.post(endpoint, payload, include_public_key=True)
+            response = self.http_client.post(endpoint, payload)
 
             if response.get("status") != "sucesso":
                 msg = response.get("mensagem") or response.get("message") or "Falha na autenticação."
@@ -531,9 +521,6 @@ class AuthController(QObject):
                         msg = sig_err if isinstance(sig_err, str) else "; ".join(str(x) for x in sig_err)
                     elif "device_id" in msg:
                         dev_err = msg["device_id"]
-                        msg = dev_err if isinstance(dev_err, str) else "; ".join(str(x) for x in dev_err)
-                    elif "usuario_maquina" in msg:
-                        dev_err = msg["usuario_maquina"]
                         msg = dev_err if isinstance(dev_err, str) else "; ".join(str(x) for x in dev_err)
                     elif "detail" in msg:
                         detail = str(msg["detail"])
