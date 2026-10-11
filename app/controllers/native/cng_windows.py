@@ -275,4 +275,12 @@ def sign_data(key_handle, payload_string, provider_name="Microsoft Platform Cryp
         if hProv.value:
             ncrypt.NCryptFreeObject(hProv)
 
+def generate_random(num_bytes=32):
+    """
+    Gera bytes aleatórios seguros no Windows.
+    """
+    print(f"[VotaAI] Gerando número aleatório ({num_bytes} bytes) no Windows via CSPRNG (secrets).")
+    import secrets
+    return secrets.token_hex(num_bytes)
+
 

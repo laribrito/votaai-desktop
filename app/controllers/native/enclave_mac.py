@@ -147,3 +147,11 @@ def sign_data(key_handle, payload_string, provider_name=None):
     )
     return base64.b64encode(signature).decode('utf-8')
 
+def generate_random(num_bytes=32):
+    """
+    Gera bytes aleatórios seguros no macOS via OS CSPRNG (secrets).
+    """
+    print(f"[VotaAI] Gerando número aleatório ({num_bytes} bytes) no macOS via OS CSPRNG (secrets).")
+    import secrets
+    return secrets.token_hex(num_bytes)
+

@@ -441,9 +441,12 @@ def generate_random(num_bytes=32):
     if _tpm2_available():
         try:
             res = subprocess.run(["tpm2_getrandom", "--hex", str(num_bytes)], capture_output=True, text=True, check=True)
+            print(f"[VotaAI] Número aleatório ({num_bytes} bytes) gerado com sucesso via hardware (TPM 2.0 RNG - tpm2_getrandom).")
             return res.stdout.strip()
         except Exception as e:
-            print(f"[VotaAI] Aviso: falha ao gerar random via TPM ({e}). Usando fallback.")
-            
+            print(f"[VotaAI] Falha ao gerar número aleatório via TPM 2.0: {e}. Usando fallback software (secrets).")
+    else:
+        print(f"[VotaAI] TPM 2.0 não disponível. Gerando número aleatório ({num_bytes} bytes) via fallback software (secrets).")
+
     import secrets
     return secrets.token_hex(num_bytes)
