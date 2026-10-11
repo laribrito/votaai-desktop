@@ -11,7 +11,7 @@ from app.controllers.cryptoController import CryptoController
 class EncryptionController:
     def __init__(self):
         self.server_public_key = self._load_server_public_key()
-        self.client_key_info, self.client_public_key_pem = self._load_or_generate_client_hardware_keys()
+        self.client_key_info, self.machine_public_key_pem = self._load_or_generate_client_hardware_keys()
 
     def _get_resources_dir(self):
         return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
@@ -110,17 +110,15 @@ class EncryptionController:
 
     def reload_client_keys(self):
         """Recarrega os metadados e chave pública do cliente."""
-        self.client_key_info, self.client_public_key_pem = self._load_or_generate_client_hardware_keys()
-        return self.client_key_info, self.client_public_key_pem
+        self.client_key_info, self.machine_public_key_pem = self._load_or_generate_client_hardware_keys()
+        return self.client_key_info, self.machine_public_key_pem
 
-    def encrypt_payload(self, payload_dict, include_public_key=False):
+    def encrypt_payload(self, payload_dict):
         """
         Implementa Sign-then-Encrypt:
           1. Serializa o payload canonicamente (chaves ordenadas, sem espaços).
           2. Assina com RSA-PSS + SHA-256 via chave privada residente no hardware.
-          3. Injeta 'signature' no payload (obrigatório em todas as requisições).
-             'client_public_key' é injetado APENAS se include_public_key=True
-             (somente nas rotas de registro, onde o servidor ainda não possui a chave).
+          3. Injeta 'machine_public_key' (em todas as requisições) e 'signature' no payload.
           4. Cifra o payload enriquecido com AES-256-GCM.
           5. Protege a chave AES com a chave pública RSA do servidor (PKCS1v15).
         """
@@ -131,11 +129,7 @@ class EncryptionController:
 
         # Garante que o payload a ser assinado não contenha assinatura prévia
         clean_payload = {k: v for k, v in payload_dict.items() if k != "signature"}
-        if include_public_key:
-            if "machine_public_key" not in clean_payload:
-                clean_payload["machine_public_key"] = self.client_public_key_pem
-            if "client_public_key" in payload_dict:
-                clean_payload["client_public_key"] = self.client_public_key_pem
+        clean_payload["machine_public_key"] = self.machine_public_key_pem
 
         # 1. Serialização canônica — determinística, independente de plataforma
         canonical_json = json.dumps(clean_payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
