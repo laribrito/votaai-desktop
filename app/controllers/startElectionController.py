@@ -40,7 +40,7 @@ class StartElectionController(QObject):
             print(f"[StartElectionController] Nonce enviado (nonceClient1): {nonce}")
             print(f"[StartElectionController] Payload enviado: {payload}")
             
-            response = self.http_client.post(API_ROUTES["ELECTION_AVAILABLE"], payload, include_public_key=True)
+            response = self.http_client.post(API_ROUTES["ELECTION_AVAILABLE"], payload)
             print(f"[StartElectionController] Resposta http_client: {response}")
             
             if response.get("status") == "erro":
@@ -99,8 +99,7 @@ class StartElectionController(QObject):
             payload = {
                 "msg": "START_ELECTION",
                 "keyHandle": key_handle,
-                "nonceClient2": nonce,
-                "machine_public_key": self.encryption_controller.client_public_key_pem
+                "nonceClient2": nonce
             }
             print(f"\n[StartElectionController] >>> _execute_start_election")
             print(f"[StartElectionController] Nonce enviado (nonceClient2): {nonce}")
@@ -118,7 +117,7 @@ class StartElectionController(QObject):
             payload["election_signature"] = election_signature
             
             # 2. http_client.post assina com a chave da máquina e cifra para a API
-            response = self.http_client.post(API_ROUTES["ELECTION_START"], payload, include_public_key=True)
+            response = self.http_client.post(API_ROUTES["ELECTION_START"], payload)
             print(f"[StartElectionController] Resposta http_client: {response}")
             
             if response.get("status") == "erro":
