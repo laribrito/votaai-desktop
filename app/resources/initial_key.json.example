@@ -1,0 +1,6 @@
+{
+    "KeyName": "VotaAI_SecureKey_1",
+    "PublicKeyBase64": "==chave publica do servidor em base64==",
+    "Algorithm": "RSA",
+    "Provider": "Microsoft Platform Crypto Provider"
+}
