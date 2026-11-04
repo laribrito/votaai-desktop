@@ -19,7 +19,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Variáveis de Ambiente (`.env`)
-Crie um arquivo `.env` na raiz do projeto com base no `.env.example`:
+Crie um arquivo `.env` na raiz do projeto com base no [`.env.example`](.env.example):
 ```ini
 INSTITUTIONAL_DOMAIN=@uesc.br
 API_BASE_URL=http://127.0.0.1:8000
@@ -52,7 +52,7 @@ Para que o aplicativo Desktop consiga estabelecer a comunicação inicial cripto
 - **`Algorithm`**: Algoritmo criptográfico assimétrico utilizado (`"RSA"`).
 - **`Provider`**: Nome do provedor criptográfico de origem.
 
-Um arquivo de exemplo também está disponível em [`app/resources/initial_key.json.example`](file:///home/debrito/Programação/votaai-desktop/app/resources/initial_key.json.example).
+Um arquivo de exemplo também está disponível em [`app/resources/initial_key.json.example`](app/resources/initial_key.json.example).
 
 ---
 
@@ -68,8 +68,8 @@ python main.py
 
 ## 🔒 Arquitetura de Segurança Multiplataforma
 
-- **Windows:** Integração com TPM nativo via **Windows CNG (`ncrypt.dll`)**.
-- **Linux / macOS:** Provedor seguro via [tpm_linux.py](file:///home/debrito/Programação/votaai-desktop/app/controllers/native/tpm_linux.py) e [enclave_mac.py](file:///home/debrito/Programação/votaai-desktop/app/controllers/native/enclave_mac.py) com chaves protegidas e permissões estritas de arquivo (`0600`).
+- **Windows:** Integração com TPM nativo via [cng_windows.py](app/controllers/native/cng_windows.py) (**Windows CNG / `ncrypt.dll`**).
+- **Linux / macOS:** Provedor seguro via [tpm_linux.py](app/controllers/native/tpm_linux.py) e [enclave_mac.py](app/controllers/native/enclave_mac.py) com chaves protegidas e permissões estritas de arquivo (`0600`).
 - **Comunicação Segura:** Todos os payloads trafegam em envelopes cifrados com **AES-GCM**, onde a chave AES é protegida pela chave pública RSA do servidor e assinada com a chave privada residente no dispositivo.
 
 ---
