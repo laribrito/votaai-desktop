@@ -72,6 +72,7 @@ python main.py
 - **Linux / macOS:** Provedor seguro via [tpm_linux.py](app/controllers/native/tpm_linux.py) e [enclave_mac.py](app/controllers/native/enclave_mac.py) com chaves protegidas e permissões estritas de arquivo (`0600`).
 - **Comunicação Segura:** Todos os payloads trafegam em envelopes cifrados com **AES-GCM**, onde a chave AES é protegida pela chave pública RSA do servidor e assinada com a chave privada residente no dispositivo.
 
+> 💡 **Detalhamento Criptográfico:** Para a análise aprofundada de cada fase, algoritmos matemáticos, tamanhos de chaves e tabela de primitivas, veja a seção [Especificação Detalhada de Todas as Etapas de Criptografia (Desktop)](#-especificação-detalhada-de-todas-as-etapas-de-criptografia-desktop).
 
 ---
 
@@ -355,6 +356,184 @@ sequenceDiagram
     Desktop->>Desktop: 10. Converte JSON decifrado para uso da aplicação
 ```
 
+---
+
+## 🔐 Especificação Detalhada de Todas as Etapas de Criptografia (Desktop)
+
+O aplicativo **VotaAí Desktop** adota o princípio de segurança em profundidade (*defense-in-depth*), combinando criptografia assimétrica de hardware, envelopes híbridos autenticados e isolamento estrito de chaves privadas em todas as fases do ciclo de vida eleitoral. A seguir, detalham-se **todas as etapas criptográficas** executadas no cliente desktop:
+
+---
+
+### Etapa 1: Provisionamento e Isolamento da Chave de Hardware da Máquina (`Client Machine Key`)
+
+Antes de qualquer comunicação com o servidor, o aplicativo provisiona um par de chaves assimétricas exclusivo para a estação de trabalho administrativa:
+
+1. **Geração do Par de Chaves RSA (2048 bits):**
+   - **No Windows:** Utiliza a API nativa **Windows CNG (Cryptography Next Generation)** através de `ncrypt.dll`. O aplicativo solicita a criação de uma chave persistente com algoritmo `BCRYPT_RSA_ALGORITHM` e tamanho de 2048 bits via provedor `MS_PLATFORM_CRYPTO_PROVIDER` (TPM 2.0). Se o chip físico não estiver disponível, recorre ao `MS_KEY_STORAGE_PROVIDER`.
+   - **No Linux:** Invoca a suíte de comandos `tpm2-tools`:
+     - Cria uma chave primária na hierarquia de proprietário (`tpm2_createprimary -C o -G rsa -g sha256`).
+     - Cria a chave filha RSA (`tpm2_create -G rsa -g sha256`).
+     - Carrega a chave no módulo TPM (`tpm2_load`).
+     - Persiste a chave no handle reservado `0x81010010` (`tpm2_evictcontrol`).
+     - **Confinamento Absoluto:** A chave privada reside exclusivamente dentro do silício do TPM e **nunca** é exportada para a memória RAM do sistema operacional ou disco.
+   - **Fallback Seguro em Software (Linux sem TPM):**
+     - Caso o chip TPM físico não esteja acessível, o sistema gera uma chave privada RSA 2048 bits e calcula uma chave simétrica de proteção de 256 bits através de **PBKDF2-HMAC-SHA256** com **200.000 iterações**, vinculada deterministicamente ao identificador único do equipamento (`/etc/machine-id` ou hostname) e salt de domínio fixo.
+     - A chave privada é cifrada em repouso com **AES-256-GCM** (salva em `app/resources/.client_keys/`) com permissões estritas de sistema de arquivos (`chmod 0600`).
+2. **Exportação e Metadados Públicos:**
+   - Apenas os metadados e a chave pública (em formatos **BCRYPT_RSAKEY_BLOB**, **DER** ou **PEM**) são gravados em `app/resources/client_key.json`.
+   - Essa chave pública (`machine_public_key`) passa a ser a identidade criptográfica oficial desta máquina perante a autoridade eleitoral.
+
+---
+
+### Etapa 2: Pré-cadastro e Confirmação de Administrador (2FA TOTP + Assinatura de Hardware)
+
+Vincula o primeiro administrador ao equipamento físico de forma criptograficamente auditável:
+
+1. **Início do Pré-cadastro (`iniciarPreCadastro`):**
+   - O administrador insere seu e-mail institucional (`@uesc.br`) e senha mestra.
+   - O payload contendo `{ email, password, device_id }` é assinado com a chave da máquina e cifrado via envelope híbrido para a chave pública do servidor (`VotaAI_SecureKey_1`).
+   - Requisição enviada via `POST /api/admin/pre-registration/`.
+2. **Decifração e Provisionamento do Segundo Fator (TOTP):**
+   - O backend gera uma chave secreta TOTP e retorna a URI oficial de provisionamento (`otpauth://totp/VotaAi:...`).
+   - A resposta vem cifrada com a chave pública da máquina; o cliente desktop aciona o hardware TPM para decifrar a chave de sessão AES e decodificar o payload.
+   - O desktop gera localmente a imagem do QR Code (`totp_qr.png`) e extrai o segredo Base32 para configuração no aplicativo autenticador (Google Authenticator, Microsoft Authenticator, etc.).
+3. **Confirmação e Ativação do Dispositivo (`confirmarPreCadastro`):**
+   - O administrador insere o código numérico de 6 dígitos gerado no autenticador.
+   - O desktop empacota `{ email, totp_code, device_id }`, assina digitalmente no TPM e envia via `POST /api/admin/pre-registration/confirm/`.
+   - Após validação no backend, salva o registro definitivo em `app/resources/registration_info.json`.
+
+---
+
+### Etapa 3: Autenticação de Sessão (Login Multi-Fator com Assinatura em Silício)
+
+O acesso às funcionalidades do painel administrativo exige a combinação de múltiplos fatores físicos e lógicos:
+
+1. **Montagem do Payload de Autenticação:**
+   - Reúne `{ username, password, totp_code, device_id, machine_public_key }`.
+2. **Assinatura Digital Física via Hardware (RSA-PSS):**
+   - O JSON canônico é submetido ao TPM/CNG.
+   - A chave privada residente assina o hash SHA-256 do payload canônico utilizando **RSA-PSS** (*Probabilistic Signature Scheme*) com salt de comprimento máximo (`salt_length=MAX_LENGTH`).
+3. **Cifragem de Envio:**
+   - O envelope completo é cifrado com AES-256-GCM efêmero e protegido pela chave pública do servidor.
+   - Requisição enviada para `POST /api/auth/login/`.
+4. **Recepção e Decifração do Token JWT de Sessão:**
+   - O servidor valida a senha, o código TOTP sincronizado por tempo e a assinatura digital da máquina.
+   - O backend emite um token de acesso JWT (Knox Token), cifrando a resposta com a chave pública da máquina (`machine_public_key`).
+   - O desktop submete a chave AES cifrada ao hardware TPM para decifração e armazena o token de sessão autenticado na memória.
+
+---
+
+### Etapa 4: Criação de Eleição e Geração de Chave Dedicada da Eleição (`Election Key`)
+
+Para garantir que a urna eletrônica seja totalmente cega e que nem mesmo o servidor backend consiga decifrar votos antes da apuração, cada eleição possui sua própria chave criptográfica isolada:
+
+1. **Geração de Chave Dedicada da Eleição no Hardware (`generate_hardware_keys`):**
+   - O controlador aciona o módulo de segurança para gerar um novo par RSA 2048 bits isolado.
+   - **No Linux TPM:** Aloca um handle persistente específico para a eleição.
+   - **No Windows CNG:** Cria um contêiner exclusivo de chave sob o provedor de plataforma.
+   - **Segredo Confinado:** A chave privada da eleição **permanece permanentemente no hardware seguro** do desktop do administrador e jamais é transmitida pela rede.
+2. **Construção e Cifragem da Cédula Oficial:**
+   - Monta-se o payload contendo o título, as perguntas/opções, a lista do colégio eleitoral validada pelo CSV, a **chave pública da eleição** gerada e o identificador do handle (`key_handle`).
+   - O payload é assinado com a chave da máquina e cifrado com AES-256-GCM + chave do servidor.
+   - Requisição enviada para `POST /api/election/create/`.
+   - A partir deste momento, todos os votos que os eleitores depositarem no aplicativo mobile serão cifrados com esta chave pública da eleição.
+
+---
+
+### Etapa 5: Consulta e Abertura Oficial com Proteção Anti-Replay e Dupla Assinatura Digital
+
+A abertura de uma eleição altera o estado da urna para aceitar votos e requer garantias criptográficas adicionais contra ataques de repetição (*replay attacks*):
+
+1. **Consulta Segura de Eleições (`fetchAvailableElections`):**
+   - O desktop solicita ao hardware a geração de 16 bytes de alta entropia via RNG do TPM (`generate_random(16)`), obtendo `nonceClient1`.
+   - Envia `{ msg: "FETCH_AVAILABLE", nonceClient1 }` assinado e cifrado para `POST /api/election/available/`.
+   - O backend processa e inclui o mesmo `nonceClient1` na resposta cifrada.
+   - O desktop decifra a resposta e valida rigorosamente se `nonce_recebido == nonceClient1`. Se divergente, aborta a operação imediatamente.
+2. **Abertura Oficial com Dupla Assinatura Digital (`startElection`):**
+   - Gera um novo nonce de alta entropia no hardware (`nonceClient2`).
+   - Monta o payload `{ msg: "START_ELECTION", keyHandle: key_handle, nonceClient2 }`.
+   - **1ª Assinatura Digital (Chave da Eleição):**
+     - O JSON canônico deste payload interno é assinado especificamente com a chave privada da eleição residente no hardware (`crypto_controller.sign_data(key_handle, payload_str)`), gerando `election_signature`.
+     - Isso comprova matematicamente ao servidor que quem está iniciando a eleição detém a posse física da chave privada daquela eleição.
+   - **2ª Assinatura Digital (Chave da Máquina):**
+     - O payload resultante com `election_signature` é então encapsulado pelo `EncryptionController`, que assina o envelope global com a chave da máquina (`signature`).
+   - O pacote é cifrado com AES-256-GCM e enviado para `POST /api/election/start/`.
+   - O backend valida a assinatura da eleição, a assinatura da máquina, o token de sessão do administrador e o nonce, ativando formalmente o pleito.
+
+---
+
+### Etapa 6: Protocolo de Envelope Híbrido Sign-then-Encrypt (Comunicação em Todas as Requisições)
+
+Todas as requisições enviadas e recebidas pelo desktop seguem rigorosamente o padrão **Sign-then-Encrypt**:
+
+#### 📤 Fluxo de Cifragem de Saída (Desktop ➔ Backend):
+1. **Higienização:** Remove qualquer campo `signature` preexistente do dicionário.
+2. **Injeção de Identidade:** Adiciona o campo `machine_public_key` com a chave pública RSA em formato PEM.
+3. **Serialização Canônica JSON (RFC 8785):**
+   $$\text{canonical\_json} = \text{dumps}(payload, \text{sort\_keys}=\text{True}, \text{separators}=(',', ':'), \text{ensure\_ascii}=\text{False})$$
+4. **Assinatura Digital de Hardware:**
+   $$\text{signature\_bytes} = \text{HardwareSign}_{\text{priv\_machine}}(\text{SHA-256}(\text{canonical\_json}))$$
+   - Aplica esquema **RSA-PSS** com MGF1-SHA256 e salt máximo.
+   - Converte para Base64 e injeta no payload: `payload["signature"] = signature_b64`.
+5. **Geração de Segredo de Sessão:**
+   - Gera uma chave simétrica efêmera de 256 bits (32 bytes): $K_{\text{AES}} \leftarrow \text{CSPRNG}(32)$.
+   - Gera um Vetor de Inicialização (IV) de 96 bits (12 bytes): $\text{IV} \leftarrow \text{CSPRNG}(12)$.
+6. **Cifragem Autenticada com AES-256-GCM:**
+   $$(\text{ciphertext}, \text{tag}) = \text{AES-GCM-Encrypt}(K_{\text{AES}}, \text{IV}, \text{signed\_json\_bytes})$$
+   - A Tag de autenticação possui 128 bits (16 bytes) e garante a integridade e autenticidade de todo o texto cifrado.
+7. **Proteção Assimétrica da Chave de Sessão:**
+   $$\text{encrypted\_aes\_key} = \text{RSA-Encrypt}_{\text{pub\_server}}(K_{\text{AES}}, \text{padding}=\text{PKCS1v15})$$
+   - Utiliza a chave pública oficial do servidor obtida em `app/resources/initial_key.json` (`VotaAI_SecureKey_1`).
+8. **Transmissão do Envelope Quádruplo:**
+   - Os 4 componentes são codificados em Base64 e transmitidos no corpo HTTP JSON:
+   ```json
+   {
+       "encrypted_payload": "<Base64 do ciphertext>",
+       "encrypted_aes_key": "<Base64 da chave AES cifrada com RSA>",
+       "iv": "<Base64 do vetor de inicialização de 12 bytes>",
+       "tag": "<Base64 da tag de autenticação GCM de 16 bytes>"
+   }
+   ```
+
+#### 📥 Fluxo de Decifração de Entrada (Backend ➔ Desktop):
+1. O backend responde com o mesmo formato de envelope quádruplo, tendo cifrado a chave AES de retorno com a `machine_public_key` do desktop.
+2. O desktop extrai `encrypted_aes_key` e envia para o hardware TPM/CNG decifrar com a chave privada residente da máquina (`crypto_backend.decrypt_data`).
+3. O hardware devolve a chave simétrica efêmera $K_{\text{AES}}$ descriptografada na memória volátil.
+4. O desktop instancia `AESGCM(aes_key)` e decifra `(ciphertext + tag)` usando o `iv`.
+5. Se a tag for válida, o JSON plano é decodificado e repassado para a interface; caso contrário, é lançada uma exceção de adulteração de dados.
+
+---
+
+### Etapa 7: Encerramento e Apuração dos Votos por Hardware (`Tallying`)
+
+Ao término do período de votação, realiza-se o processo soberano de decifração e contagem:
+
+1. **Bloqueio de Recebimento de Votos (`Fechar.qml`):**
+   - O administrador emite uma ordem assinada com o handle da eleição para bloquear novos depósitos de cédulas na API.
+2. **Download das Cédulas Cifradas (`Apurar.qml`):**
+   - O aplicativo desktop requisita todos os votos registrados no banco de dados da urna.
+   - Cada voto registrado no servidor está cifrado com a chave pública da eleição gerada na Etapa 4.
+3. **Decifração em Hardware e Contagem Local:**
+   - Para cada cédula cifrada recebida, o desktop aciona o hardware de segurança passando o identificador da eleição:
+     $$\text{voto\_plano} = \text{HardwareDecrypt}(key\_handle, \text{voto\_cifrado})$$
+   - A decifração ocorre estritamente dentro do enclave/chip seguro. A chave privada da eleição **jamais é revelada**.
+   - O controlador Python contabiliza as respostas, computa os totais e gera o relatório oficial de apuração com hashes de integridade.
+
+---
+
+### 📋 Tabela Resumo das Primitivas e Parâmetros Criptográficos (Desktop)
+
+| Finalidade | Algoritmo / Primitiva | Tamanho de Chave / Bloco | Padding / Esquema | Provedor / Implementação |
+| :--- | :--- | :--- | :--- | :--- |
+| **Identidade da Máquina** | RSA | 2048 bits ($e=65537$) | PKCS#1 v1.5 / PSS | TPM 2.0 (`0x81010010`) / Windows CNG (`MS_PLATFORM_CRYPTO_PROVIDER`) |
+| **Assinatura de Payloads** | RSA-PSS | 2048 bits | MGF1(SHA-256), Salt MAX | `tpm2_sign` / `NCryptSignHash` (Hardware Seguro) |
+| **Chave da Eleição** | RSA | 2048 bits ($e=65537$) | PKCS#1 v1.5 / RSAES | TPM 2.0 / Windows CNG (Isolamento por Pleito) |
+| **Cifragem de Sessão** | AES-GCM | 256 bits ($K_{\text{AES}}$) | NoPadding, Tag 128 bits | `cryptography.hazmat.primitives.ciphers.aead.AESGCM` |
+| **Vetor de Inicialização (IV)** | Aleatório CSPRNG | 96 bits (12 bytes) | N/A | `os.urandom(12)` |
+| **Cifragem da Chave AES** | RSA Assimétrico | 2048 bits (Chave Servidor 1) | PKCS#1 v1.5 | `padding.PKCS1v15()` / Chave `VotaAI_SecureKey_1` |
+| **Proteção Anti-Replay** | Pseudoaleatório CSPRNG | 128 bits (16 bytes) | N/A | RNG de Hardware do TPM (`tpm2_getrandom` / `generate_random`) |
+| **Fallback Software (Linux)** | PBKDF2-HMAC-SHA256 | 256 bits | 200.000 iterações | `machine-id` + AES-256-GCM em disco (`chmod 0600`) |
+| **Segundo Fator (2FA)** | HMAC-SHA1 (TOTP) | 6 dígitos numéricos | Janela temporal de 30s | RFC 6238 / QR Code `otpauth://` |
 
 ---
 
