@@ -11,7 +11,7 @@ import Design
 import QtQuick.Studio.DesignEffects
 
 Rectangle {
-    width: Constants.width
+    width: parent ? parent.width : Constants.width
     height: Constants.height
     color: "#e8e8e8"
 
@@ -110,7 +110,7 @@ Rectangle {
 
     Button {
         id: startElectionBtn
-        x: Constants.width - width - 45
+        x: root.width - width - 45
         y: Constants.height - height - 30
         width: 160
         height: 40
@@ -144,7 +144,7 @@ Rectangle {
 
     Button {
         id: backToMainBtn
-        x: Constants.width - width - 45
+        x: root.width - width - 45
         y: Constants.height - height - 30
         width: 160
         height: 40
@@ -182,8 +182,8 @@ Rectangle {
         id: statusMessageText
         anchors.right: (startElectionBtn.visible ? startElectionBtn.left : (backToMainBtn.visible ? backToMainBtn.left : parent.right))
         anchors.rightMargin: (startElectionBtn.visible || backToMainBtn.visible) ? 15 : 45
-        anchors.verticalCenter: startElectionBtn.verticalCenter
-        width: 480
+        anchors.verticalCenter: (startElectionBtn.visible ? startElectionBtn.verticalCenter : backToMainBtn.verticalCenter)
+        width: Math.min(480, root.width - 240)
         text: root.statusMessage
         color: root.statusIsError ? "#d9534f" : "#1e7e34"
         font.pixelSize: 13

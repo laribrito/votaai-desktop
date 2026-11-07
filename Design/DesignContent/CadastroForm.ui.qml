@@ -11,8 +11,9 @@ import QtQuick.Studio.DesignEffects
 
 Rectangle {
     id: root
-    width: Constants.width
-    height: Constants.height
+    width: parent ? parent.width : Constants.width
+    property bool isCompact: (typeof appWindow !== 'undefined' && appWindow.isCompactWidth) || (width < 750)
+    height: (root.isCompact && root.currentStep === 2) ? Math.max(Constants.height, 750) : Constants.height
     color: "#e8e8e8"
 
     property int currentStep: 1
@@ -245,7 +246,7 @@ Rectangle {
         // Botão de Ação Principal (Canto Inferior Direito)
         Button {
             id: submitPreCadastroBtn
-            x: Constants.width - width - 45
+            x: root.width - width - 45
             y: Constants.height - height - 30
             width: 220
             height: 40
@@ -368,16 +369,16 @@ Rectangle {
         // Lado Direito: Campo TOTP
         Text {
             id: labelTotp
-            x: 360
-            y: 138
+            x: root.isCompact ? 45 : 360
+            y: root.isCompact ? 455 : 138
             text: qsTr("Código de 6 dígitos gerado pelo aplicativo")
             font.pixelSize: 12
             color: "#333333"
         }
 
         Rectangle {
-            x: 360
-            y: 163
+            x: root.isCompact ? 45 : 360
+            y: root.isCompact ? 480 : 163
             width: 210
             height: 35
             color: "#ffffff"
@@ -404,9 +405,10 @@ Rectangle {
         }
 
         Text {
-            x: 360
-            y: 215
-            width: 380
+            id: instructionsTotp
+            x: root.isCompact ? 45 : 360
+            y: root.isCompact ? 530 : 215
+            width: root.isCompact ? Math.min(380, root.width - 90) : 380
             text: qsTr("Abra o Google Authenticator ou Microsoft Authenticator em seu celular para escanear o QR Code e digitar o código gerado.")
             font.pixelSize: 12
             font.weight: Font.Light
@@ -416,9 +418,9 @@ Rectangle {
 
         Text {
             id: errorStep2
-            x: 360
-            y: 280
-            width: 380
+            x: root.isCompact ? 45 : 360
+            y: root.isCompact ? 595 : 280
+            width: root.isCompact ? Math.min(380, root.width - 90) : 380
             text: root.errorMessage
             color: "#d9534f"
             font.pixelSize: 12
@@ -431,7 +433,7 @@ Rectangle {
         Button {
             id: backToStep1Btn
             x: 45
-            y: Constants.height - height - 30
+            y: root.isCompact ? 655 : (Constants.height - height - 30)
             width: 120
             height: 40
             text: qsTr("Voltar")
@@ -459,8 +461,8 @@ Rectangle {
         // Botão Confirmar e Ativar (Inferior Direito)
         Button {
             id: submitTotpBtn
-            x: Constants.width - width - 45
-            y: Constants.height - height - 30
+            x: root.width - width - 45
+            y: root.isCompact ? 655 : (Constants.height - height - 30)
             width: 200
             height: 40
             text: root.isLoading ? qsTr("Validando...") : qsTr("Confirmar e Ativar")
@@ -529,7 +531,7 @@ Rectangle {
 
         Button {
             id: accessMainBtn
-            x: Constants.width - width - 45
+            x: root.width - width - 45
             y: Constants.height - height - 30
             width: 200
             height: 40

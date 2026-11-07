@@ -13,8 +13,9 @@ import QtQuick.Studio.DesignEffects
 
 Rectangle {
     id: root
-    width: Constants.width
-    height: Constants.height
+    width: parent ? parent.width : Constants.width
+    property bool isCompact: (typeof appWindow !== 'undefined' && appWindow.isCompactWidth) || (width < 650)
+    height: isCompact ? Math.max(Constants.height, grid.y + grid.height + 50) : Constants.height
     color: "#e8e8e8"
 
     signal criarEleicaoClicked
@@ -44,12 +45,12 @@ Rectangle {
         id: grid
         x: 45
         y: 133
-        width: 556
-        height: 252
+        width: root.isCompact ? 260 : 556
+        height: root.isCompact ? (4 * 109 + 3 * 35) : 252
         spacing: 35
         horizontalItemAlignment: Grid.AlignLeft
-        rows: 2
-        columns: 2
+        rows: root.isCompact ? 4 : 2
+        columns: root.isCompact ? 1 : 2
 
         Rectangle {
             id: rectangle7

@@ -13,11 +13,11 @@ import QtQuick.Studio.DesignEffects
 import QtQuick.Dialogs
 
 Rectangle {
-    width: Constants.width
-    height: Constants.height
-    color: "#e8e8e8"
-
     id: root
+    width: parent ? parent.width : Constants.width
+    property bool isCompact: (typeof appWindow !== 'undefined' && appWindow.isCompactWidth) || (width < 950)
+    height: root.isCompact ? Math.max(Constants.height, (createElectionBtn.visible ? createElectionBtn.y + createElectionBtn.height : backToMainBtn.y + backToMainBtn.height) + 40) : Constants.height
+    color: "#e8e8e8"
 
     property alias textInput: textInput
     property alias csvInput: csvInput
@@ -97,9 +97,10 @@ Rectangle {
     }
 
     Rectangle {
+        id: titleInputRect
         x: 45
         y: 163
-        width: 450
+        width: root.isCompact ? Math.max(200, Math.min(450, root.width - 90)) : 450
         height: 30
         color: "#ffffff"
         radius: 4
@@ -137,9 +138,10 @@ Rectangle {
     }
 
     Rectangle {
+        id: csvInputRect
         x: 45
         y: 233
-        width: 335
+        width: root.isCompact ? Math.max(150, Math.min(335, root.width - 90 - 115)) : 335
         height: 30
         color: "#ffffff"
         radius: 4
@@ -163,7 +165,7 @@ Rectangle {
 
     Button {
         id: browseButton
-        x: 395
+        x: root.isCompact ? (csvInputRect.x + csvInputRect.width + 15) : 395
         y: 233
         width: 100
         height: 30
@@ -191,9 +193,10 @@ Rectangle {
     }
 
     Column {
+        id: invalidCsvColumn
         x: 45
         y: 290
-        width: 450
+        width: root.isCompact ? Math.max(200, Math.min(450, root.width - 90)) : 450
         spacing: 15
         visible: !isValidCsv
 
@@ -249,9 +252,10 @@ Rectangle {
     }
 
     Column {
+        id: validCsvColumn
         x: 45
         y: 290
-        width: 450
+        width: root.isCompact ? Math.max(200, Math.min(450, root.width - 90)) : 450
         spacing: 15
         visible: isValidCsv
 
@@ -341,9 +345,9 @@ Rectangle {
 
     Button {
         id: addQuestionBtn
-        x: 520
-        y: 118
-        width: 180
+        x: root.isCompact ? 45 : 520
+        y: root.isCompact ? (root.isValidCsv ? (validCsvColumn.y + validCsvColumn.height + 25) : (invalidCsvColumn.y + invalidCsvColumn.height + 25)) : 118
+        width: root.isCompact ? Math.min(180, root.width - 90) : 180
         height: 30
         text: qsTr("+ Adicionar Pergunta")
 
@@ -371,11 +375,12 @@ Rectangle {
 
     ListView {
         id: questionsList
-        x: 520
-        y: 163
-        width: 460
-        height: Constants.height - 163 - 90
-        clip: true
+        x: root.isCompact ? 45 : 520
+        y: root.isCompact ? (addQuestionBtn.y + addQuestionBtn.height + 15) : 163
+        width: root.isCompact ? (root.width - 90) : 460
+        height: root.isCompact ? contentHeight : (Constants.height - 163 - 90)
+        clip: !root.isCompact
+        interactive: !root.isCompact
         spacing: 15
 
         model: ListModel {
@@ -611,8 +616,8 @@ Rectangle {
 
     Button {
         id: createElectionBtn
-        x: Constants.width - width - 45
-        y: Constants.height - height - 30
+        x: root.width - width - 45
+        y: root.isCompact ? (questionsList.y + questionsList.height + 30) : (Constants.height - height - 30)
         width: 160
         height: 40
         text: root.isLoading ? qsTr("Criando...") : qsTr("Criar Eleição")
@@ -645,8 +650,8 @@ Rectangle {
 
     Button {
         id: backToMainBtn
-        x: Constants.width - width - 45
-        y: Constants.height - height - 30
+        x: root.width - width - 45
+        y: root.isCompact ? (questionsList.y + questionsList.height + 30) : (Constants.height - height - 30)
         width: 160
         height: 40
         text: qsTr("Voltar ao Painel")
@@ -683,8 +688,8 @@ Rectangle {
         id: statusMessageText
         anchors.right: (createElectionBtn.visible ? createElectionBtn.left : (backToMainBtn.visible ? backToMainBtn.left : parent.right))
         anchors.rightMargin: (createElectionBtn.visible || backToMainBtn.visible) ? 15 : 45
-        anchors.verticalCenter: createElectionBtn.verticalCenter
-        width: 480
+        anchors.verticalCenter: (createElectionBtn.visible ? createElectionBtn.verticalCenter : backToMainBtn.verticalCenter)
+        width: Math.min(480, root.width - 240)
         text: root.statusMessage
         color: root.statusIsError ? "#d9534f" : "#1e7e34"
         font.pixelSize: 13
