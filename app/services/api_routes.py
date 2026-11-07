@@ -29,6 +29,7 @@ def _load_routes() -> Dict[str, Any]:
         "ELECTION_CREATE": ("election", "create"),
         "ELECTION_AVAILABLE": ("election", "list_available"),
         "ELECTION_START": ("election", "start"),
+        "ELECTION_CLOSE": ("election", "close"),
         "PING": ("system", "ping"),
         "PING_DESKTOP": ("system", "ping"),
     }
