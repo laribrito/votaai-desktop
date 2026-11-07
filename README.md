@@ -102,7 +102,7 @@ flowchart TD
     
     MainPanel --> Action1["Ação 3 e 4: Criar Eleição<br/>(Importação CSV + Cédula + Chave no TPM)"]
     MainPanel --> Action2["Ação 5: Iniciar Eleição<br/>(Nonce Anti-Replay + Dupla Assinatura)"]
-    MainPanel --> Action3["Ação 6: Fechar Eleição<br/>(Bloqueio de Recebimento de Votos)"]
+    MainPanel --> Action3["Ação 6: Fechar Eleição<br/>(Bloqueio de Votos + Quórum Congelado)"]
     MainPanel --> Action4["Ação 7: Apurar Eleição<br/>(Decifração e Contagem dos Votos)"]
 ```
 
@@ -289,28 +289,72 @@ sequenceDiagram
 
 ---
 
-### 7. Ação 6: Encerramento e Apuração da Eleição
+### 7. Ação 6: Encerramento Oficial da Eleição e Congelamento de Quórum (`CloseElectionController`)
 
-Ações finais de encerramento do recebimento de votos e contagem dos resultados:
+Fluxo de encerramento oficial da eleição com proteção anti-replay, validação da assinatura da chave da eleição via TPM e congelamento definitivo do quórum de votantes:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Admin as Administrador
-    participant UI as Interface (Fechar.qml / Apurar.qml)
+    participant UI as Interface (Fechar.qml)
+    participant CloseCtrl as CloseElectionController
+    participant TPM as TPM 2.0 / Secure Enclave
+    participant API as Backend (API)
+
+    Note over Admin,API: Etapa 1: Consulta de Eleições Ativas para Fechamento
+    Admin->>UI: Acessa a tela "Fechar Eleição"
+    UI->>CloseCtrl: fetchAvailableElections()
+    CloseCtrl->>TPM: generate_random(16) -> Gera nonceClient1
+    TPM-->>CloseCtrl: Nonce criptográfico aleatório (16 bytes)
+    CloseCtrl->>CloseCtrl: Monta payload { msg: "FETCH_AVAILABLE", nonceClient1, status: "STARTED" }
+    CloseCtrl->>TPM: Assina envelope com a chave da máquina (RSA-PSS)
+    TPM-->>CloseCtrl: Assinatura da máquina
+    CloseCtrl->>CloseCtrl: Cifra envelope com AES-256-GCM + chave pública do Servidor
+    CloseCtrl->>API: POST /api/election/available/ (Envelope Cifrado)
+    API-->>CloseCtrl: Resposta cifrada com eleições ativas e nonceClient1
+    CloseCtrl->>TPM: Decifra chave AES de sessão
+    CloseCtrl->>CloseCtrl: Valida se nonce_recebido == nonceClient1
+    CloseCtrl-->>UI: Popula ComboBox com eleições em andamento
+
+    Note over Admin,API: Etapa 2: Encerramento Oficial com Assinatura da Eleição
+    Admin->>UI: Seleciona a eleição e clica em "Fechar Eleição"
+    UI->>CloseCtrl: closeElection(key_handle)
+    CloseCtrl->>TPM: generate_random(16) -> Gera nonceClient3
+    TPM-->>CloseCtrl: Nonce criptográfico aleatório (16 bytes)
+    
+    Note over CloseCtrl,TPM: 1ª Assinatura: Chave Específica da Eleição
+    CloseCtrl->>TPM: sign_data(key_handle, payload_interno)
+    TPM-->>CloseCtrl: election_signature
+    
+    Note over CloseCtrl,TPM: 2ª Assinatura: Chave da Máquina (Envelope Global)
+    CloseCtrl->>TPM: Assina envelope global com chave da máquina (RSA-PSS)
+    TPM-->>CloseCtrl: machine_signature
+    CloseCtrl->>CloseCtrl: Cifra payload com AES-256-GCM + RSA do Servidor
+    
+    CloseCtrl->>API: POST /api/election/close/
+    Note over API: Valida election_signature, autorização da máquina, altera status para CLOSED e trava quórum
+    API-->>CloseCtrl: Resposta cifrada com nonceClient3, hora_registrada e quórum congelado
+    CloseCtrl->>TPM: Decifra chave AES no hardware
+    CloseCtrl->>CloseCtrl: Valida se nonce_recebido == nonceClient3
+    CloseCtrl-->>UI: Emite closeElectionFinished, exibe quórum final travado e botão para voltar ao painel
+```
+
+---
+
+### 8. Ação 7: Apuração dos Resultados da Eleição (`Apurar.qml`)
+
+Ação de decifração soberana e contagem dos votos em hardware:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Administrador
+    participant UI as Interface (Apurar.qml)
     participant Ctrl as Controllers (Python)
     participant TPM as TPM 2.0 / Secure Enclave
     participant API as Backend (API)
 
-    Note over Admin,API: Encerramento da Votação (Fechar.qml)
-    Admin->>UI: Seleciona a eleição ativa e clica em "Fechar Eleição"
-    UI->>Ctrl: Solicita encerramento da eleição
-    Ctrl->>TPM: Assina solicitação com o handle da eleição
-    Ctrl->>API: Envia requisição de bloqueio de novos votos
-    API-->>Ctrl: Confirmação de encerramento da votação
-    Ctrl-->>UI: Atualiza status da eleição para "Encerrada"
-
-    Note over Admin,API: Apuração dos Resultados (Apurar.qml)
     Admin->>UI: Clica em "Apurar Eleição"
     UI->>Ctrl: Dispara processo de totalização
     Ctrl->>API: Requisita os votos cifrados da eleição
@@ -324,7 +368,7 @@ sequenceDiagram
 
 ---
 
-### 8. Protocolo Criptográfico de Envelope Híbrido (Sign-then-Encrypt)
+### 9. Protocolo Criptográfico de Envelope Híbrido (Sign-then-Encrypt)
 
 Padrão de comunicação utilizado em **todas** as interações entre o aplicativo Desktop e o Servidor Backend:
 
@@ -504,16 +548,34 @@ Todas as requisições enviadas e recebidas pelo desktop seguem rigorosamente o 
 
 ---
 
-### Etapa 7: Encerramento e Apuração dos Votos por Hardware (`Tallying`)
+### Etapa 7: Encerramento da Eleição e Congelamento de Quórum (`CloseElectionController`)
 
-Ao término do período de votação, realiza-se o processo soberano de decifração e contagem:
+O encerramento oficial encerra a recepção de votos, congela as métricas do quórum e prepara a eleição para a apuração:
 
-1. **Bloqueio de Recebimento de Votos (`Fechar.qml`):**
-   - O administrador emite uma ordem assinada com o handle da eleição para bloquear novos depósitos de cédulas na API.
-2. **Download das Cédulas Cifradas (`Apurar.qml`):**
+1. **Consulta Filtrada de Eleições em Andamento (`fetchAvailableElections`):**
+   - O desktop gera um nonce aleatório de alta entropia (`nonceClient1`) via RNG de hardware do TPM (`generate_random(16)`).
+   - Envia `{ msg: "FETCH_AVAILABLE", nonceClient1, status: "STARTED" }` assinado e cifrado via envelope híbrido para `POST /api/election/available/`.
+   - O backend filtra apenas as eleições com status `STARTED` criadas pela máquina conectada.
+   - O desktop valida o eco de `nonceClient1` e popula a interface reativa de seleção (`Fechar.qml`).
+2. **Ordem de Fechamento com Assinatura da Eleição (`closeElection`):**
+   - Gera um novo nonce anti-replay (`nonceClient3`).
+   - Monta o payload canônico `{ msg: "CLOSE_ELECTION", keyHandle: key_handle, nonceClient3 }`.
+   - **Assinatura da Eleição (Hardware):** Invoca `crypto_controller.sign_data(key_handle, payload_str)`, comprovando a autoridade sobre a chave daquela eleição.
+   - **Assinatura da Máquina (Envelope):** O `HttpClient` assina o envelope global com a chave da máquina e cifra para a chave pública do servidor (`VotaAI_SecureKey_1`).
+   - Enviado para `POST /api/election/close/`.
+   - O backend valida as duas assinaturas, muda o status para `CLOSED`, registra o timestamp de término (`end_datetime`) e trava o número de votantes e votos depositados.
+   - O desktop decifra a resposta, confere o `nonceClient3` e exibe na interface o quórum definitivo congelado com botão de retorno ao painel.
+
+---
+
+### Etapa 8: Apuração dos Votos por Hardware (`Tallying`)
+
+Ao término da votação e com o quórum devidamente congelado, realiza-se o processo soberano de decifração e contagem:
+
+1. **Download das Cédulas Cifradas (`Apurar.qml`):**
    - O aplicativo desktop requisita todos os votos registrados no banco de dados da urna.
    - Cada voto registrado no servidor está cifrado com a chave pública da eleição gerada na Etapa 4.
-3. **Decifração em Hardware e Contagem Local:**
+2. **Decifração em Hardware e Contagem Local:**
    - Para cada cédula cifrada recebida, o desktop aciona o hardware de segurança passando o identificador da eleição:
      $$\text{voto\_plano} = \text{HardwareDecrypt}(key\_handle, \text{voto\_cifrado})$$
    - A decifração ocorre estritamente dentro do enclave/chip seguro. A chave privada da eleição **jamais é revelada**.
@@ -544,7 +606,7 @@ A organização do repositório foi planejada para separar claramente a interfac
 ```text
 votaai-desktop/
 ├── app/                  # Lógica de negócio e comunicação em Python
-│   ├── controllers/      # Controladores que integram as telas (QML) com as ações do sistema (ex: AuthController)
+│   ├── controllers/      # Controladores que integram as telas (QML) com as ações do sistema (ex: AuthController, StartElectionController, CloseElectionController)
 │   ├── services/         # Serviços puramente de API e rede (ex: HttpClient, ElectionApi)
 │   └── resources/        # Arquivos locais e de chaves criptográficas (ex: initial_key.json)
 ├── Design/               # Interface de Usuário (UI)
