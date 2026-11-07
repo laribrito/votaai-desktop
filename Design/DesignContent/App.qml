@@ -4,8 +4,18 @@ import Design
 
 Window {
     id: appWindow
-    width: stackView.currentItem ? stackView.currentItem.width : Constants.width
-    height: stackView.currentItem ? stackView.currentItem.height : Constants.height
+
+    // Margem de segurança para decorações da janela do SO (barra de títulos/bordas)
+    readonly property int windowDecorationMargin: 40
+    readonly property bool isCompactWidth: Screen.desktopAvailableWidth < Constants.width
+    readonly property bool isCompactHeight: (Screen.desktopAvailableHeight - windowDecorationMargin) < Constants.height
+
+    width: isCompactWidth ? Screen.desktopAvailableWidth : Constants.width
+    height: isCompactHeight ? (Screen.desktopAvailableHeight - windowDecorationMargin) : Constants.height
+    minimumWidth: width
+    maximumWidth: width
+    minimumHeight: height
+    maximumHeight: height
 
     visible: true
     title: "Vota Aí"
@@ -69,24 +79,43 @@ Window {
         }
     }
 
-    StackView {
-        id: stackView
-        objectName: "stackView"
+    Flickable {
+        id: flickable
         anchors.fill: parent
-        initialItem: (typeof authController !== 'undefined' && authController && authController.isRegistered) 
-                     ? (authController.isAuthenticated ? mainComponent : autenticacaoComponent) 
-                     : cadastroComponent
-    }
+        contentWidth: width
+        contentHeight: stackView.currentItem ? Math.max(height, stackView.currentItem.height) : height
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
 
-    ResponsibleUserBadge {
-        id: responsibleUserBadge
-        objectName: "responsibleUserBadge"
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: 47
-        anchors.rightMargin: 45
-        z: 999
-        visible: (typeof authController !== 'undefined' && authController && authController.isRegistered)
+        ScrollBar.vertical: ScrollBar {
+            id: verticalScrollBar
+            policy: flickable.contentHeight > flickable.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+        }
+
+        StackView {
+            id: stackView
+            objectName: "stackView"
+            width: flickable.width
+            height: Math.max(flickable.height, currentItem ? currentItem.height : flickable.height)
+            initialItem: (typeof authController !== 'undefined' && authController && authController.isRegistered) 
+                         ? (authController.isAuthenticated ? mainComponent : autenticacaoComponent) 
+                         : cadastroComponent
+
+            onCurrentItemChanged: {
+                flickable.contentY = 0
+            }
+        }
+
+        ResponsibleUserBadge {
+            id: responsibleUserBadge
+            objectName: "responsibleUserBadge"
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 47
+            anchors.rightMargin: 45
+            z: 999
+            visible: (typeof authController !== 'undefined' && authController && authController.isRegistered)
+        }
     }
 }
 
