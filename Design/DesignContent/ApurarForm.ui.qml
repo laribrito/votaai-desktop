@@ -11,7 +11,7 @@ import Design
 import QtQuick.Studio.DesignEffects
 
 Rectangle {
-    width: Constants.width
+    width: parent ? parent.width : Constants.width
     height: Constants.height
     color: "#e8e8e8"
 
@@ -105,7 +105,7 @@ Rectangle {
 
     Button {
         id: actionBtn
-        x: Constants.width - width - 45
+        x: root.width - width - 45
         y: Constants.height - height - 30
         width: 160
         height: 40

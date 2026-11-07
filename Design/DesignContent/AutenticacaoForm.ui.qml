@@ -11,7 +11,7 @@ import QtQuick.Studio.DesignEffects
 
 Rectangle {
     id: root
-    width: Constants.width
+    width: parent ? parent.width : Constants.width
     height: Constants.height
     color: "#e8e8e8"
 
@@ -213,7 +213,7 @@ Rectangle {
     // Botão de Ação Principal (Canto Inferior Direito)
     Button {
         id: submitLoginBtn
-        x: Constants.width - width - 45
+        x: root.width - width - 45
         y: Constants.height - height - 30
         width: 200
         height: 40
