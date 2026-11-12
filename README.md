@@ -362,19 +362,34 @@ sequenceDiagram
     autonumber
     actor Admin as Administrador
     participant UI as Interface (Apurar.qml)
-    participant Ctrl as Controllers (Python)
+    participant Ctrl as TallyElectionController
     participant Crypto as CryptoController / Native
     participant API as Backend (API)
+    actor Publico as Auditor / Qualquer Pessoa
 
-    Admin->>UI: Clica em "Apurar Eleição"
-    UI->>Ctrl: Dispara processo de totalização
-    Ctrl->>API: Requisita os votos cifrados da eleição
-    API-->>Ctrl: Retorna cédulas cifradas com a chave pública da eleição
-    Ctrl->>Crypto: decrypt_data(key_handle, voto_cifrado)
-    Note over Crypto: Decifra chave da eleição na RAM (via machine secret)<br/>e decifra cédulas/envelopes em lote na CPU
-    Crypto-->>Ctrl: Votos individuais decifrados
-    Ctrl->>Ctrl: Totaliza votos por questão e gera estatísticas
-    Ctrl-->>UI: Exibe relatório de apuração e resultados oficiais
+    Admin->>UI: Seleciona eleição CLOSED e clica "Apurar Eleição"
+    UI->>Ctrl: tallyElection(keyHandle)
+    Ctrl->>API: POST /api/election/tally/votes/ (com machine_signature no envelope)
+    API-->>Ctrl: Retorna cédulas cifradas da urna { id_generated, content }
+    
+    loop Para cada voto da urna
+        Ctrl->>Crypto: decrypt_vote(key_handle, content)
+        Crypto-->>Ctrl: Cédula decifrada na memória RAM
+    end
+
+    Ctrl->>Ctrl: Contabiliza opções por questão e gera tally_hash (SHA-256)
+    Ctrl->>Crypto: export_election_private_key(key_handle)
+    Crypto-->>Ctrl: Chave privada da eleição em formato PEM (PKCS#8)
+
+    Ctrl->>API: POST /api/election/tally/ { keyHandle, tally_hash, private_key, results, nonceClient }
+    Note over API: 1. Valida assinatura da máquina física criadora<br/>2. Valida derivação matemática de private_key com public_key<br/>3. Cria registro de Tally(tally_hash)<br/>4. Salva election.private_key e atualiza status para TALLIED
+    API-->>Ctrl: Confirmação da apuração oficial e persistência
+    Ctrl-->>UI: Exibe resumo dos resultados e hash de auditoria
+
+    Note over Publico,API: Auditoria Pública Aberta
+    Publico->>API: GET /api/election/track/<id>/
+    API-->>Publico: Retorna votos cifrados, tally_hash e private_key pública
+    Note over Publico: Qualquer pessoa pode baixar os votos e a chave privada,<br/>reexecutar a apuração de forma soberana e conferir o hash
 ```
 
 ---
@@ -581,22 +596,29 @@ O encerramento oficial encerra a recepção de votos, congela as métricas do qu
 
 ---
 
-### Etapa 8: Apuração Soberana dos Votos (`Tallying`)
+### Etapa 8: Apuração Soberana dos Votos (`Tallying`) e Revelação da Chave Privada
 
-Ao término da votação e com o quórum devidamente congelado, realiza-se o processo soberano de decifração e contagem:
+Ao término da votação e com o quórum devidamente congelado, realiza-se o processo soberano de decifração, contagem e abertura pública:
 
-1. **Download das Cédulas Cifradas (`Apurar.qml`):**
-   - O aplicativo desktop requisita todos os votos registrados no banco de dados da urna.
-   - Cada voto registrado no servidor está cifrado com a chave pública da eleição gerada na Etapa 4.
-2. **Decifração em Memória RAM e Contagem Local (`decrypt_data`):**
-   - O desktop invoca o método unificado de decifração do backend nativo (`crypto_controller.decrypt_data(key_handle, encrypted_data)`).
+1. **Download das Cédulas Cifradas (`POST /api/election/tally/votes/`):**
+   - O aplicativo desktop autenticado requisita todos os votos registrados no banco de dados da urna para a eleição fechada (`CLOSED`).
+   - Apenas a máquina criadora autenticada no TPM pode acessar as cédulas cifradas nesta fase.
+2. **Decifração em Memória RAM e Contagem Local (`decrypt_vote`):**
+   - O desktop invoca o método de decifração do backend nativo (`crypto_controller.decrypt_vote(key_handle, vote_content)`).
    - A chave privada da eleição é decifrada na memória volátil usando a chave AES derivada da máquina física.
    - O algoritmo decifra com alta velocidade na CPU:
      - **Cédula RSA direta:** decifrada com PKCS#1 v1.5 ou OAEP.
      - **Modelo em camadas:** extrai `pacote_cifrado` do payload `{ id_voto, pacote_cifrado }`.
      - **Envelope híbrido AES-GCM + RSA:** decifra a chave AES com RSA e decifra a cédula com AES-256-GCM.
-   - A decifração ocorre estritamente na memória volátil sem restrição de barramento do chip TPM, permitindo processar dezenas de milhares de cédulas em poucos segundos.
-   - O controlador Python contabiliza as respostas, computa os totais e gera o relatório oficial de apuração com hashes de integridade.
+   - O controlador contabiliza as escolhas, totaliza votos por questão e calcula o hash criptográfico canônico de auditoria (`tally_hash = SHA-256`).
+3. **Exportação da Chave Privada da Eleição (`export_election_private_key`):**
+   - Como a chave reside fora do hardware TEE (criptografada em repouso), ela é decifrada na memória e serializada em formato **PKCS#8 PEM**.
+4. **Envio da Primeira Apuração Oficial (`POST /api/election/tally/`):**
+   - O Desktop monta o envelope híbrido autenticado pela assinatura de hardware TPM da máquina contendo `{ keyHandle, tally_hash, private_key, results, nonceClient }`.
+   - O servidor backend valida a assinatura da máquina, confirma que a `private_key` deriva matematicamente a `public_key` da eleição, cria o registro `Tally(tally_hash)`, persiste `election.private_key = private_key` e atualiza o status do pleito para `TALLIED`.
+5. **Auditoria Pública por Qualquer Pessoa:**
+   - Com o status `TALLIED`, a chave privada da eleição e todas as cédulas cifradas tornam-se públicas via endpoint de acompanhamento (`/api/election/track/<id>/`).
+   - Qualquer auditor, cidadão ou aplicativo externo pode baixar a totalidade dos votos cifrados e a chave privada para decifrar e recontar os votos de forma soberana e independente, verificando a exata correspondência com o `tally_hash` oficial registrado.
 
 ---
 

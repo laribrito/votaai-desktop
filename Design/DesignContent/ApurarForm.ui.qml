@@ -1,4 +1,3 @@
-
 /*
 This is a UI file (.ui.qml) that is intended to be edited in Qt Design Studio only.
 It is supposed to be strictly declarative and only uses a subset of QML. If you edit
@@ -19,6 +18,13 @@ Rectangle {
 
     property alias electionComboBox: electionComboBox
     property alias actionBtn: actionBtn
+    property alias backToMainBtn: backToMainBtn
+
+    property bool isLoading: false
+    property string statusMessage: ""
+    property bool statusIsError: false
+    property bool isElectionTallied: false
+    property string tallyDetailsText: ""
 
     signal backClicked
 
@@ -43,8 +49,6 @@ Rectangle {
             font.bold: true
         }
         Connections {
-
-
             function onClicked() {
                 root.backClicked()
             }
@@ -64,7 +68,7 @@ Rectangle {
         id: text2
         x: 45
         y: 81
-        text: qsTr("Selecione a eleição que deseja contabilizar os votos e gerar o relatório")
+        text: qsTr("Selecione a eleição fechada que deseja decifrar soberanamente e consolidar a apuração oficial")
         font.pixelSize: 13
         font.weight: Font.Light
     }
@@ -73,7 +77,7 @@ Rectangle {
         id: text3
         x: 45
         y: 138
-        text: qsTr("Eleição")
+        text: qsTr("Eleição Fechada")
         font.pixelSize: 12
     }
 
@@ -83,7 +87,8 @@ Rectangle {
         y: 163
         width: 450
         height: 35
-        model: ["Eleição para Diretor 2026", "Representante Discente", "Conselho Universitário"]
+        model: []
+        enabled: !root.isLoading && !root.isElectionTallied
 
         background: Rectangle {
             color: "#ffffff"
@@ -103,13 +108,61 @@ Rectangle {
         }
     }
 
+    // Painel de Resultados da Apuração
+    Rectangle {
+        id: resultsContainer
+        x: 45
+        y: 215
+        width: Math.min(650, root.width - 90)
+        height: Math.max(160, Constants.height - y - 85)
+        color: "#ffffff"
+        radius: 6
+        border.color: "#c0c0c0"
+        border.width: 1
+        visible: root.isElectionTallied
+
+        Text {
+            id: resultsTitle
+            x: 15
+            y: 12
+            text: qsTr("✓ Apuração Oficial Concluída e Chave Privada Publicada")
+            font.pixelSize: 13
+            font.bold: true
+            color: "#1e7e34"
+        }
+
+        Flickable {
+            id: resultsFlickable
+            x: 15
+            y: 35
+            width: parent.width - 30
+            height: parent.height - 45
+            contentWidth: resultsText.paintedWidth
+            contentHeight: resultsText.paintedHeight
+            clip: true
+
+            Text {
+                id: resultsText
+                width: resultsFlickable.width
+                text: root.tallyDetailsText
+                font.pixelSize: 12
+                font.family: "Monospace"
+                color: "#222222"
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
+
     Button {
         id: actionBtn
         x: root.width - width - 45
         y: Constants.height - height - 30
         width: 160
         height: 40
-        text: qsTr("Apurar Eleição")
+        text: root.isLoading ? qsTr("Apurando...") : qsTr("Apurar Eleição")
+        enabled: !root.isLoading && (electionComboBox.currentIndex >= 0) && (electionComboBox.count > 0) && !root.isElectionTallied
+        visible: !root.isElectionTallied
+        opacity: enabled ? 1.0 : 0.5
 
         background: Rectangle {
             color: parent.down ? "#176128" : (parent.hovered ? "#24913d" : "#1e7e34")
@@ -131,5 +184,56 @@ Rectangle {
             font.pixelSize: 14
             font.bold: true
         }
+    }
+
+    Button {
+        id: backToMainBtn
+        x: root.width - width - 45
+        y: Constants.height - height - 30
+        width: 160
+        height: 40
+        text: qsTr("Voltar ao Painel")
+        visible: root.isElectionTallied
+
+        background: Rectangle {
+            color: parent.down ? "#2b3d4f" : (parent.hovered ? "#3e5770" : "#34495e")
+            radius: 6
+            Rectangle {
+                z: -1
+                width: parent.width
+                height: parent.height
+                y: 3
+                color: "#33000000"
+                radius: 6
+            }
+        }
+        contentItem: Text {
+            text: parent.text
+            color: "white"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 14
+            font.bold: true
+        }
+        Connections {
+            function onClicked() {
+                root.backClicked()
+            }
+        }
+    }
+
+    Text {
+        id: statusMessageText
+        anchors.right: (actionBtn.visible ? actionBtn.left : (backToMainBtn.visible ? backToMainBtn.left : parent.right))
+        anchors.rightMargin: (actionBtn.visible || backToMainBtn.visible) ? 15 : 45
+        anchors.verticalCenter: (actionBtn.visible ? actionBtn.verticalCenter : backToMainBtn.verticalCenter)
+        width: Math.min(480, root.width - 240)
+        text: root.statusMessage
+        color: root.statusIsError ? "#d9534f" : "#1e7e34"
+        font.pixelSize: 13
+        font.bold: true
+        horizontalAlignment: Text.AlignRight
+        wrapMode: Text.WordWrap
+        visible: root.statusMessage !== ""
     }
 }

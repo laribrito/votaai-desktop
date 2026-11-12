@@ -259,6 +259,18 @@ def _software_load_private_key(key_name):
     pem_bytes = _decrypt_pem(encrypted)
     return serialization.load_pem_private_key(pem_bytes, password=None)
 
+def export_private_key_pem(key_handle):
+    """
+    Exporta a chave privada em formato PEM (PKCS#8).
+    Apenas suportado para chaves mantidas fora do TEE (como a chave da eleição).
+    """
+    priv_key = _software_load_private_key(key_handle)
+    return priv_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode('utf-8')
+
 def _software_sign(key_name, data_str):
     if isinstance(data_str, str):
         data_bytes = data_str.encode('utf-8')

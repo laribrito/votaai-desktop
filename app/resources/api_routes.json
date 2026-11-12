@@ -8,7 +8,9 @@
     "create": "/api/election/create/",
     "list_available": "/api/election/available/",
     "start": "/api/election/start/",
-    "close": "/api/election/close/"
+    "close": "/api/election/close/",
+    "tally": "/api/election/tally/",
+    "tally_votes": "/api/election/tally/votes/"
   },
   "system": {
     "ping": "/api/ping-desktop/"

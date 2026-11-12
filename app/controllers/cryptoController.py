@@ -39,6 +39,12 @@ class CryptoController:
         """Descriptografa uma cédula de votação para apuração da eleição delegando ao provedor nativo."""
         return self.backend.decrypt_data(key_handle, vote_record)
 
+    def export_election_private_key(self, key_handle):
+        """Exporta a chave privada da eleição em formato PEM (PKCS#8) para envio oficial e apuração pública."""
+        if hasattr(self.backend, 'export_private_key_pem'):
+            return self.backend.export_private_key_pem(key_handle)
+        raise NotImplementedError("O backend criptográfico atual não suporta exportação de chave PEM.")
+
     def sign_data(self, key_handle, payload_string, provider_name=None):
         """
         Assina digitalmente a string do payload.
