@@ -4,6 +4,7 @@ import struct
 import stat
 import hashlib
 import subprocess
+import json
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -103,9 +104,13 @@ def generate_rsa_key(key_name="VotaAI_DesktopClient_Key"):
     }
 
 def generate_key():
-    """Gera chave no hardware compatível com interface legada."""
-    info = generate_rsa_key("votaai_desktop_hw_key")
-    return info.get("PublicKeyBase64"), info.get("KeyName")
+    """
+    Gera a chave da eleição fora do hardware seguro (TEE) para viabilizar a ação de apurar.
+    A chave privada da eleição NUNCA é salva no chip/enclave, permanecendo em software.
+    """
+    key_name = "votaai_desktop_hw_key"
+    meta = generate_rsa_key(key_name)
+    return meta.get("PublicKeyBase64"), meta.get("KeyName")
 
 def _load_private_key(key_handle):
     enc_path = _get_encrypted_key_path(key_handle)
@@ -118,8 +123,56 @@ def _load_private_key(key_handle):
 
 def decrypt_data(key_handle, encrypted_data, provider_name=None):
     """
-    Descriptografa dados usando a chave privada RSA no macOS com padding PKCS#1 v1.5.
+    Descriptografa dados usando a chave privada RSA no macOS.
+    - Se for a chave da eleição (fora do TEE): descriptografa em software na memória RAM (PKCS#1 v1.5 / OAEP / híbrido).
+    - Se for a chave da máquina: decifra usando a chave do enclave/dispositivo.
     """
+    if key_handle != "VotaAI_DesktopClient_Key":
+        private_key = _load_private_key(key_handle)
+
+        parsed_dict = None
+        if isinstance(encrypted_data, dict):
+            parsed_dict = encrypted_data
+        elif isinstance(encrypted_data, str):
+            try:
+                val = json.loads(encrypted_data)
+                if isinstance(val, dict):
+                    parsed_dict = val
+            except Exception:
+                parsed_dict = None
+
+        # Caso A: Modelo em camadas do voto ({id_voto, pacote_cifrado})
+        if parsed_dict and "pacote_cifrado" in parsed_dict:
+            return decrypt_data(key_handle, parsed_dict["pacote_cifrado"], provider_name=provider_name)
+
+        # Caso B: Envelope híbrido AES-GCM + RSA
+        if parsed_dict and all(k in parsed_dict for k in ("encrypted_payload", "encrypted_aes_key", "iv", "tag")):
+            enc_aes_key = base64.b64decode(parsed_dict["encrypted_aes_key"])
+            aes_key = private_key.decrypt(enc_aes_key, padding.PKCS1v15())
+            aesgcm = AESGCM(aes_key[:32])
+            iv_bytes = base64.b64decode(parsed_dict["iv"])
+            tag_bytes = base64.b64decode(parsed_dict["tag"])
+            payload_bytes = base64.b64decode(parsed_dict["encrypted_payload"])
+            return aesgcm.decrypt(iv_bytes, payload_bytes + tag_bytes, None)
+
+        # Caso C: Cifra RSA direta (bytes ou string base64)
+        if isinstance(encrypted_data, str):
+            cipher_bytes = base64.b64decode(encrypted_data)
+        else:
+            cipher_bytes = encrypted_data
+
+        try:
+            return private_key.decrypt(cipher_bytes, padding.PKCS1v15())
+        except Exception:
+            return private_key.decrypt(
+                cipher_bytes,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
+                )
+            )
+
     if isinstance(encrypted_data, str):
         cipher_bytes = base64.b64decode(encrypted_data)
     else:
@@ -130,7 +183,8 @@ def decrypt_data(key_handle, encrypted_data, provider_name=None):
 def sign_data(key_handle, payload_string, provider_name=None):
     """
     Assina digitalmente dados com RSA-PSS + SHA-256 no macOS.
-    Chave privada decifrada apenas na memória durante a operação.
+    - Se for a chave da eleição (fora do TEE): assina em software.
+    - Se for a chave da máquina: assina com a chave do dispositivo.
     """
     if isinstance(payload_string, str):
         data_bytes = payload_string.encode('utf-8')

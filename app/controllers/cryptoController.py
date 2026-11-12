@@ -21,7 +21,7 @@ class CryptoController:
         return self.get_backend()
 
     def generate_hardware_keys(self):
-        """Gera chaves no hardware seguro da máquina e retorna (chave_publica, key_handle)."""
+        """Gera as chaves da eleição fora do hardware seguro (TEE) para viabilizar apuração e retorna (chave_publica, key_handle)."""
         return self.backend.generate_key()
 
     def generate_rsa_key(self, key_name="VotaAI_DesktopClient_Key"):
@@ -29,16 +29,20 @@ class CryptoController:
         return self.backend.generate_rsa_key(key_name)
 
     def decrypt_with_hardware(self, key_handle, encrypted_data, provider_name=None):
-        """Usa a chave privada armazenada no hardware (referenciada pelo key_handle) para descriptografar os dados."""
+        """Usa a chave privada armazenada (no hardware para máquina ou em software para eleição) para descriptografar os dados."""
         return self.backend.decrypt_data(key_handle, encrypted_data, provider_name=provider_name)
 
     def decrypt_data(self, key_handle, encrypted_data, provider_name=None):
         return self.backend.decrypt_data(key_handle, encrypted_data, provider_name=provider_name)
 
+    def decrypt_vote(self, key_handle, vote_record):
+        """Descriptografa uma cédula de votação para apuração da eleição delegando ao provedor nativo."""
+        return self.backend.decrypt_data(key_handle, vote_record)
+
     def sign_data(self, key_handle, payload_string, provider_name=None):
         """
-        Usa a chave privada armazenada no hardware (via key_handle) para 
-        assinar digitalmente a string do payload.
+        Assina digitalmente a string do payload.
+        Usa a chave de hardware (se máquina) ou software fora do TEE (se eleição).
         Retorna a assinatura em Base64.
         """
         return self.backend.sign_data(key_handle, payload_string, provider_name=provider_name)

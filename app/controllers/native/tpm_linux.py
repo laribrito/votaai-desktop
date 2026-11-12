@@ -11,9 +11,9 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # Handles persistentes no TPM para as chaves do cliente VotaAI
+# Apenas a chave da máquina física reside no hardware TPM
 TPM2_KEY_HANDLES = {
     "VotaAI_DesktopClient_Key": "0x81010010",
-    "votaai_desktop_hw_key": "0x81010020",
 }
 TPM2_SIGNING_HANDLE = "0x81010010"
 
@@ -353,84 +353,144 @@ def generate_rsa_key(key_name="VotaAI_DesktopClient_Key"):
     return meta
 
 def generate_key():
-    """Interface legada para a chave de eleição. Reutiliza a chave existente se disponível."""
+    """
+    Gera a chave da eleição fora do hardware seguro (TEE) para viabilizar a ação de apurar.
+    A chave privada da eleição NUNCA é salva no chip TPM, permanecendo em armazenamento
+    de software local protegido (cifrado com machine-id secret).
+    """
     key_name = "votaai_desktop_hw_key"
+    pub_pem = _software_generate_key(key_name)
+    pub_key = serialization.load_pem_public_key(pub_pem.encode('utf-8'))
+    cng_blob = _rsa_public_to_cng_blob(pub_key)
     meta_path = _get_key_meta_path(key_name)
-    if os.path.exists(meta_path):
-        try:
-            with open(meta_path, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
-            if meta.get("Storage") == "tpm2":
-                h = meta.get("TPMHandle")
-                if h and _tpm2_handle_exists(h):
-                    return meta.get("PublicKeyBase64"), meta.get("KeyName")
-            elif meta.get("Storage") == "software-encrypted":
-                enc_path = _get_encrypted_key_path(key_name)
-                if os.path.exists(enc_path):
-                    return meta.get("PublicKeyBase64"), meta.get("KeyName")
-        except Exception:
-            pass
 
-    info = generate_rsa_key(key_name)
-    return info.get("PublicKeyBase64"), info.get("KeyName")
+    meta = {
+        "KeyName": key_name,
+        "PublicKeyBase64": base64.b64encode(cng_blob).decode('utf-8'),
+        "PublicKeyPEM": pub_pem,
+        "Algorithm": "RSA",
+        "Provider": "Linux Software (AES-256-GCM encrypted, outside TEE)",
+        "Storage": "software-encrypted",
+        "TPMHandle": None,
+        "Note": "Chave da eleicao armazenada fora do TEE para apuracao soberana."
+    }
+
+    with open(meta_path, 'w', encoding='utf-8') as f:
+        json.dump(meta, f, indent=2)
+    try:
+        os.chmod(meta_path, stat.S_IRUSR | stat.S_IWUSR)
+    except Exception:
+        pass
+
+    return meta.get("PublicKeyBase64"), meta.get("KeyName")
 
 def decrypt_data(key_handle, encrypted_data, provider_name=None):
     """
-    Descriptografa dados usando a chave privada RSA (PKCS#1 v1.5).
-    - Se a chave reside no TPM: descriptografa diretamente no hardware via tpm2_rsadecrypt.
-    - Se fallback software: decifra via cryptography na memória.
+    Descriptografa dados usando a chave privada RSA.
+    - Se for a chave da máquina (VotaAI_DesktopClient_Key): descriptografa no hardware TPM via tpm2_rsadecrypt.
+    - Se for a chave de eleição (fora do TEE): descriptografa em software na memória RAM (PKCS#1 v1.5 / OAEP / híbrido).
     """
+    # 1. Se a chave for a do cliente Desktop (residente no hardware TPM)
+    if key_handle == "VotaAI_DesktopClient_Key":
+        if isinstance(encrypted_data, str):
+            cipher_bytes = base64.b64decode(encrypted_data)
+        else:
+            cipher_bytes = encrypted_data
+
+        meta_path = _get_key_meta_path(key_handle)
+        storage = "tpm2"
+        tpm_handle = _get_tpm_handle(key_handle)
+
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                storage = meta.get("Storage", "tpm2")
+                tpm_handle = meta.get("TPMHandle") or tpm_handle
+            except Exception:
+                pass
+
+        if storage == "tpm2" and _tpm2_available():
+            try:
+                return _tpm2_decrypt(tpm_handle, cipher_bytes)
+            except Exception as e:
+                print(f"[VotaAI] Falha na descriptografia TPM 2.0: {e}. Tentando software fallback.")
+
+        private_key = _software_load_private_key(key_handle)
+        return private_key.decrypt(cipher_bytes, padding.PKCS1v15())
+
+    # 2. Chave de eleição (mantida fora do TEE para apuração)
+    private_key = _software_load_private_key(key_handle)
+
+    # Identifica se encrypted_data é um envelope (dict ou json string)
+    parsed_dict = None
+    if isinstance(encrypted_data, dict):
+        parsed_dict = encrypted_data
+    elif isinstance(encrypted_data, str):
+        try:
+            val = json.loads(encrypted_data)
+            if isinstance(val, dict):
+                parsed_dict = val
+        except Exception:
+            parsed_dict = None
+
+    # Caso A: Modelo em camadas do voto ({id_voto, pacote_cifrado})
+    if parsed_dict and "pacote_cifrado" in parsed_dict:
+        return decrypt_data(key_handle, parsed_dict["pacote_cifrado"], provider_name=provider_name)
+
+    # Caso B: Envelope híbrido AES-GCM + RSA
+    if parsed_dict and all(k in parsed_dict for k in ("encrypted_payload", "encrypted_aes_key", "iv", "tag")):
+        enc_aes_key = base64.b64decode(parsed_dict["encrypted_aes_key"])
+        aes_key = private_key.decrypt(enc_aes_key, padding.PKCS1v15())
+        aesgcm = AESGCM(aes_key[:32])
+        iv_bytes = base64.b64decode(parsed_dict["iv"])
+        tag_bytes = base64.b64decode(parsed_dict["tag"])
+        payload_bytes = base64.b64decode(parsed_dict["encrypted_payload"])
+        return aesgcm.decrypt(iv_bytes, payload_bytes + tag_bytes, None)
+
+    # Caso C: Cifra RSA direta (bytes ou string base64)
     if isinstance(encrypted_data, str):
         cipher_bytes = base64.b64decode(encrypted_data)
     else:
         cipher_bytes = encrypted_data
 
-    meta_path = _get_key_meta_path(key_handle)
-    storage = "software-encrypted"
-    tpm_handle = _get_tpm_handle(key_handle)
-
-    if os.path.exists(meta_path):
-        try:
-            with open(meta_path, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
-            storage = meta.get("Storage", "software-encrypted")
-            tpm_handle = meta.get("TPMHandle") or tpm_handle
-        except Exception:
-            pass
-
-    if storage == "tpm2" and _tpm2_available():
-        try:
-            return _tpm2_decrypt(tpm_handle, cipher_bytes)
-        except Exception as e:
-            print(f"[VotaAI] Falha na descriptografia TPM 2.0: {e}. Tentando software fallback.")
-
-    private_key = _software_load_private_key(key_handle)
-    return private_key.decrypt(cipher_bytes, padding.PKCS1v15())
+    try:
+        return private_key.decrypt(cipher_bytes, padding.PKCS1v15())
+    except Exception:
+        return private_key.decrypt(
+            cipher_bytes,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
 
 def sign_data(key_handle, payload_string, provider_name=None):
     """
     Assina dados com RSA-PSS + SHA-256.
-    - Se TPM disponível: operação ocorre dentro do chip (chave privada nunca sai do hardware).
-    - Fallback: chave decifrada na memória, assinatura em software, memória limpa ao finalizar.
+    - Se for a chave da máquina (VotaAI_DesktopClient_Key): assina dentro do chip TPM via tpm2_sign.
+    - Se for a chave da eleição (fora do TEE): assina em software via _software_sign.
     """
-    meta_path  = _get_key_meta_path(key_handle)
-    storage    = "software-encrypted"  # default
-    tpm_handle = _get_tpm_handle(key_handle)
+    if key_handle == "VotaAI_DesktopClient_Key":
+        meta_path  = _get_key_meta_path(key_handle)
+        storage    = "tpm2"
+        tpm_handle = _get_tpm_handle(key_handle)
 
-    if os.path.exists(meta_path):
-        try:
-            with open(meta_path, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
-            storage = meta.get("Storage", "software-encrypted")
-            tpm_handle = meta.get("TPMHandle") or tpm_handle
-        except Exception:
-            pass
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                storage = meta.get("Storage", "tpm2")
+                tpm_handle = meta.get("TPMHandle") or tpm_handle
+            except Exception:
+                pass
 
-    if storage == "tpm2" and _tpm2_available():
-        try:
-            return _tpm2_sign(tpm_handle, payload_string)
-        except Exception as e:
-            print(f"[VotaAI] Falha na assinatura TPM 2.0: {e}. Usando fallback software.")
+        if storage == "tpm2" and _tpm2_available():
+            try:
+                return _tpm2_sign(tpm_handle, payload_string)
+            except Exception as e:
+                print(f"[VotaAI] Falha na assinatura TPM 2.0: {e}. Usando software.")
 
     return _software_sign(key_handle, payload_string)
 
