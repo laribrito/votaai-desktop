@@ -144,3 +144,69 @@ class TestTallyElection(unittest.TestCase):
         self.assertEqual(res["results"]["Reitor 2026"]["Chapa 1"], 2)
         self.assertEqual(res["results"]["Reitor 2026"]["Chapa 2"], 1)
         self.assertTrue(len(res["tally_hash"]) == 64)
+
+    @patch('app.controllers.tallyElectionController.HttpClient')
+    def test_execute_tally_with_mobile_choices_and_abstention(self, MockHttpClient):
+        """Testa decifração com formato mobile {choices: {q_id: opt_id}} e metadados de abstenção."""
+        mock_http = MockHttpClient.return_value
+        ctrl = TallyElectionController()
+        ctrl.http_client = mock_http
+        ctrl.crypto_controller = self.crypto
+
+        priv_pem = self.crypto.export_election_private_key(self.key_handle)
+        priv_key = serialization.load_pem_private_key(priv_pem.encode('utf-8'), password=None)
+        pub_key = priv_key.public_key()
+
+        voto_payload = json.dumps({
+            "election_id": 1,
+            "choices": {"101": 201},
+            "timestamp": "2026-11-12T20:00:00Z"
+        }).encode('utf-8')
+        voto_enc = pub_key.encrypt(voto_payload, padding.PKCS1v15())
+
+        def mock_post(url, payload):
+            if "votes" in url:
+                return {
+                    "status": "sucesso",
+                    "dados": {
+                        "nonceClient": payload.get("nonceClient"),
+                        "total_voters": 5,
+                        "abstention_count": 4,
+                        "abstention_percentage": 80.0,
+                        "questions": [
+                            {
+                                "id": 101,
+                                "question": "Presidente",
+                                "options": [
+                                    {"id": 201, "label": "Chapa A"},
+                                    {"id": 202, "label": "Chapa B"}
+                                ]
+                            }
+                        ],
+                        "votes": [
+                            {"id_generated": "V-10", "content": base64.b64encode(voto_enc).decode('utf-8')}
+                        ]
+                    }
+                }
+            elif "tally" in url:
+                return {
+                    "status": "sucesso",
+                    "dados": {
+                        "nonceClient": payload.get("nonceClient"),
+                        "tally_hash": payload["tally_hash"],
+                        "status": "TALLIED"
+                    }
+                }
+            raise ValueError(f"URL: {url}")
+
+        mock_http.post.side_effect = mock_post
+        res = json.loads(ctrl._execute_tally_election(self.key_handle))
+
+        self.assertEqual(res["status"], "sucesso")
+        self.assertEqual(res["total_votos"], 1)
+        self.assertEqual(res["total_voters"], 5)
+        self.assertEqual(res["abstention_count"], 4)
+        self.assertEqual(res["abstention_percentage"], 80.0)
+        self.assertEqual(res["results"]["Presidente"]["Chapa A"], 1)
+        self.assertEqual(res["results"]["questions"][0]["options"][0]["votes"], 1)
+        self.assertEqual(res["results"]["questions"][0]["options"][0]["percentage"], 100.0)
