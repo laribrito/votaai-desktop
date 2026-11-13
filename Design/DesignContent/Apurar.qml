@@ -63,15 +63,36 @@ ApurarForm {
                     statusMessage = "Apuração soberana concluída e chave privada publicada!"
 
                     var details = "Total de cédulas apuradas: " + (res.total_votos !== undefined ? res.total_votos : 0) + "\n"
+                    var resObj = res.results || {}
+                    var abstPct = res.abstention_percentage !== undefined ? res.abstention_percentage : (resObj.abstention_percentage !== undefined ? resObj.abstention_percentage : 0.0)
+                    var abstCount = res.abstention_count !== undefined ? res.abstention_count : (resObj.abstention_count !== undefined ? resObj.abstention_count : 0)
+                    details += "Abstenção: " + (typeof abstPct === 'number' ? abstPct.toFixed(1) : abstPct) + "% (" + abstCount + " ausente(s))\n"
                     details += "Audit Hash (SHA-256): " + (res.tally_hash || "N/A") + "\n\n"
                     details += "--- CONTAGEM DE VOTOS POR QUESTÃO ---\n"
 
-                    var results = res.results || {}
-                    for (var q in results) {
-                        details += "• " + q + ":\n"
-                        var opts = results[q]
-                        for (var opt in opts) {
-                            details += "   - " + opt + ": " + opts[opt] + " voto(s)\n"
+                    var resObj = res.results || {}
+                    if (resObj.questions && Array.isArray(resObj.questions) && resObj.questions.length > 0) {
+                        for (var i = 0; i < resObj.questions.length; i++) {
+                            var qItem = resObj.questions[i]
+                            details += "• " + qItem.question + ":\n"
+                            var optsList = qItem.options || []
+                            for (var j = 0; j < optsList.length; j++) {
+                                var optItem = optsList[j]
+                                var pctStr = (optItem.percentage !== undefined) ? (" (" + optItem.percentage.toFixed(1) + "%)") : ""
+                                details += "   - " + optItem.label + ": " + optItem.votes + " voto(s)" + pctStr + "\n"
+                            }
+                            details += "\n"
+                        }
+                    } else {
+                        var summary = resObj.summary || resObj
+                        for (var q in summary) {
+                            if (q === "questions" || q === "total_votos") continue
+                            details += "• " + q + ":\n"
+                            var opts = summary[q]
+                            for (var opt in opts) {
+                                details += "   - " + opt + ": " + opts[opt] + " voto(s)\n"
+                            }
+                            details += "\n"
                         }
                     }
 
