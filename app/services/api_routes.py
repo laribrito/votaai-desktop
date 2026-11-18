@@ -24,6 +24,8 @@ def _load_routes() -> Dict[str, Any]:
     # Mapeamento de atalhos em maiúsculas a partir das rotas carregadas do JSON
     shortcut_map = {
         "PRE_CADASTRO": ("auth", "pre_cadastro"),
+        "VERIFICAR_EMAIL_PRE_CADASTRO": ("auth", "verificar_email_pre_cadastro"),
+        "REENVIAR_EMAIL_PRE_CADASTRO": ("auth", "reenviar_email_pre_cadastro"),
         "CONFIRMAR_PRE_CADASTRO": ("auth", "confirmar_pre_cadastro"),
         "LOGIN": ("auth", "login"),
         "ELECTION_CREATE": ("election", "create"),

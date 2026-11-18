@@ -1,6 +1,8 @@
 {
   "auth": {
     "pre_cadastro": "/api/admin/pre-registration/",
+    "verificar_email_pre_cadastro": "/api/admin/pre-registration/verify-email/",
+    "reenviar_email_pre_cadastro": "/api/admin/pre-registration/resend-email/",
     "confirmar_pre_cadastro": "/api/admin/pre-registration/confirm/",
     "login": "/api/auth/login/"
   },
