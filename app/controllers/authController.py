@@ -24,6 +24,8 @@ class AuthController(QObject):
     registrationStatusChanged = Signal()
     authenticationStatusChanged = Signal()
     preRegistrationFinished = Signal(str)
+    verificarEmailFinished = Signal(str)
+    reenviarEmailFinished = Signal(str)
     confirmarPreCadastroFinished = Signal(str)
     loginFinished = Signal(str)
     isLoadingChanged = Signal()
@@ -248,76 +250,22 @@ class AuthController(QObject):
                     payload_data = {**dados, **dados["dados"]}
 
             # Procura a URI de provisionamento TOTP por chaves em inglês e português
-            uri_provisionamento = (
-                payload_data.get("provisioning_uri")
-                or payload_data.get("uri_provisionamento")
-                or payload_data.get("totp_uri")
-                or payload_data.get("otpauth_url")
-                or payload_data.get("otp_uri")
-                or payload_data.get("uri")
-                or payload_data.get("provisioning_url")
-                or ""
-            )
+            uri_provisionamento = self._extract_provisioning_uri(payload_data)
 
             if not uri_provisionamento:
                 server_msg = (
                     payload_data.get("message")
                     or payload_data.get("mensagem")
-                    or payload_data.get("detail")
-                    or payload_data.get("error")
+                    or "Código de verificação enviado para o seu e-mail."
                 )
-                if server_msg:
-                    return json.dumps({
-                        "status": "erro",
-                        "mensagem": f"Servidor: {server_msg}"
-                    })
                 return json.dumps({
-                    "status": "erro",
-                    "mensagem": "URI de provisionamento TOTP não recebida do servidor."
+                    "status": "sucesso",
+                    "requires_email_verification": True,
+                    "mensagem": str(server_msg),
+                    "message": str(server_msg),
                 })
 
-            # 3. Gera a imagem do QR Code
-            qr_file_path = os.path.join(self.resources_dir, 'totp_qr.png')
-            img = qrcode.make(uri_provisionamento)
-            img.save(qr_file_path)
-
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            qr_base64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
-
-            # 4. Extrai o segredo para inserção manual caso necessário
-            secret = (
-                payload_data.get("secret")
-                or payload_data.get("totp_secret")
-                or payload_data.get("secret_key")
-                or payload_data.get("base32_secret")
-                or payload_data.get("segredo")
-                or ""
-            )
-            if not secret and uri_provisionamento:
-                try:
-                    parsed = urllib.parse.urlparse(uri_provisionamento)
-                    query = urllib.parse.parse_qs(parsed.query)
-                    secret = query.get("secret", [""])[0]
-                except Exception:
-                    pass
-
-            success_msg = (
-                payload_data.get("message")
-                or payload_data.get("mensagem")
-                or "Pré-cadastro iniciado com sucesso."
-            )
-
-            return json.dumps({
-                "status": "sucesso",
-                "mensagem": success_msg,
-                "message": success_msg,
-                "uri_provisionamento": uri_provisionamento,
-                "provisioning_uri": uri_provisionamento,
-                "secret": secret,
-                "qr_path": os.path.abspath(qr_file_path).replace("\\", "/"),
-                "qr_base64": qr_base64
-            })
+            return self._build_totp_qr_response(payload_data, uri_provisionamento, "Pré-cadastro iniciado com sucesso.")
 
         except Exception as e:
             return json.dumps({"status": "erro", "mensagem": f"Falha na operação: {str(e)}"})
@@ -337,6 +285,220 @@ class AuthController(QObject):
             finally:
                 self._set_loading(False)
             self.preRegistrationFinished.emit(res)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    @staticmethod
+    def _extract_provisioning_uri(payload_data: dict) -> str:
+        if not isinstance(payload_data, dict):
+            return ""
+        return (
+            payload_data.get("provisioning_uri")
+            or payload_data.get("uri_provisionamento")
+            or payload_data.get("totp_uri")
+            or payload_data.get("otpauth_url")
+            or payload_data.get("otp_uri")
+            or payload_data.get("uri")
+            or payload_data.get("provisioning_url")
+            or ""
+        )
+
+    @staticmethod
+    def _format_http_error(response: dict, default_msg: str) -> str:
+        msg = response.get("mensagem") or response.get("message") or default_msg
+        if isinstance(msg, dict):
+            parts = []
+            for k, v in msg.items():
+                if isinstance(v, list):
+                    parts.append(f"{k.capitalize()}: {'; '.join(str(x) for x in v)}")
+                else:
+                    parts.append(f"{k.capitalize()}: {v}")
+            msg = " ".join(parts)
+        return json.dumps({"status": "erro", "mensagem": str(msg)})
+
+    @staticmethod
+    def _unwrap_payload_data(response: dict, default_error_msg: str) -> tuple[dict | None, str | None]:
+        dados = response.get("dados", {})
+        if isinstance(dados, str):
+            try:
+                dados = json.loads(dados)
+            except Exception:
+                dados = {"mensagem": dados}
+
+        payload_data = dados if isinstance(dados, dict) else {}
+        if isinstance(dados, dict):
+            if dados.get("status") in ["error", "erro", "failed"]:
+                err = (
+                    dados.get("message")
+                    or dados.get("mensagem")
+                    or dados.get("detail")
+                    or dados.get("error")
+                    or default_error_msg
+                )
+                if isinstance(err, dict):
+                    err = "; ".join(f"{k}: {v}" for k, v in err.items())
+                return None, json.dumps({"status": "erro", "mensagem": str(err)})
+
+            if isinstance(dados.get("data"), dict):
+                payload_data = {**dados, **dados["data"]}
+            elif isinstance(dados.get("dados"), dict):
+                payload_data = {**dados, **dados["dados"]}
+
+        return payload_data, None
+
+    def _build_totp_qr_response(self, payload_data: dict, uri_provisionamento: str, default_success_msg: str) -> str:
+        qr_file_path = os.path.join(self.resources_dir, 'totp_qr.png')
+        img = qrcode.make(uri_provisionamento)
+        img.save(qr_file_path)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        qr_base64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        secret = (
+            payload_data.get("secret")
+            or payload_data.get("totp_secret")
+            or payload_data.get("secret_key")
+            or payload_data.get("base32_secret")
+            or payload_data.get("segredo")
+            or ""
+        )
+        if not secret and uri_provisionamento:
+            try:
+                parsed = urllib.parse.urlparse(uri_provisionamento)
+                query = urllib.parse.parse_qs(parsed.query)
+                secret = query.get("secret", [""])[0]
+            except Exception:
+                pass
+
+        success_msg = (
+            payload_data.get("message")
+            or payload_data.get("mensagem")
+            or default_success_msg
+        )
+
+        return json.dumps({
+            "status": "sucesso",
+            "requires_email_verification": False,
+            "mensagem": success_msg,
+            "message": success_msg,
+            "uri_provisionamento": uri_provisionamento,
+            "provisioning_uri": uri_provisionamento,
+            "secret": secret,
+            "qr_path": os.path.abspath(qr_file_path).replace("\\", "/"),
+            "qr_base64": qr_base64
+        })
+
+    def _execute_verificar_email(self, email: str, codigo_verificacao: str) -> str:
+        """Execução síncrona da etapa 2: verificação do código de 6 dígitos enviado por e-mail."""
+        email = (email or '').strip()
+        codigo_verificacao = (codigo_verificacao or '').strip()
+
+        if not email:
+            return json.dumps({"status": "erro", "mensagem": "O e-mail é obrigatório."})
+        if not codigo_verificacao or len(codigo_verificacao) != 6 or not codigo_verificacao.isdigit():
+            return json.dumps({"status": "erro", "mensagem": "O código de verificação deve conter exatamente 6 dígitos numéricos."})
+
+        try:
+            endpoint = API_ROUTES["auth"]["verificar_email_pre_cadastro"]
+            device_id = DeviceController().get_device_id()
+            payload = {
+                "email": email,
+                "verification_code": codigo_verificacao,
+                "device_id": device_id,
+            }
+
+            response = self.http_client.post(endpoint, payload)
+            if response.get("status") != "sucesso":
+                return self._format_http_error(response, "Código de verificação inválido ou expirado.")
+
+            payload_data, err_json = self._unwrap_payload_data(response, "Código de verificação inválido ou expirado.")
+            if err_json:
+                return err_json
+
+            uri_provisionamento = self._extract_provisioning_uri(payload_data)
+            if not uri_provisionamento:
+                return json.dumps({
+                    "status": "erro",
+                    "mensagem": "URI de provisionamento TOTP não recebida do servidor."
+                })
+
+            return self._build_totp_qr_response(
+                payload_data,
+                uri_provisionamento,
+                "E-mail verificado com sucesso."
+            )
+        except Exception as e:
+            return json.dumps({"status": "erro", "mensagem": f"Falha na verificação de e-mail: {str(e)}"})
+
+    @Slot(str, str)
+    def verificarEmailPreCadastro(self, email: str, codigo_verificacao: str):
+        """
+        Dispara a verificação do código de e-mail em segundo plano (assíncrono).
+        Emite o sinal verificarEmailFinished(resJson) ao terminar.
+        """
+        self._set_loading(True)
+        def _worker():
+            try:
+                res = self._execute_verificar_email(email, codigo_verificacao)
+            except Exception as e:
+                res = json.dumps({"status": "erro", "mensagem": f"Falha na verificação de e-mail: {str(e)}"})
+            finally:
+                self._set_loading(False)
+            self.verificarEmailFinished.emit(res)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _execute_reenviar_email(self, email: str) -> str:
+        """Execução síncrona do reenvio de código de verificação por e-mail."""
+        email = (email or '').strip()
+        if not email:
+            return json.dumps({"status": "erro", "mensagem": "O e-mail é obrigatório."})
+
+        try:
+            endpoint = API_ROUTES["auth"]["reenviar_email_pre_cadastro"]
+            device_id = DeviceController().get_device_id()
+            payload = {
+                "email": email,
+                "device_id": device_id,
+            }
+
+            response = self.http_client.post(endpoint, payload)
+            if response.get("status") != "sucesso":
+                return self._format_http_error(response, "Não foi possível reenviar o código de verificação.")
+
+            payload_data, err_json = self._unwrap_payload_data(response, "Não foi possível reenviar o código de verificação.")
+            if err_json:
+                return err_json
+
+            success_msg = (
+                payload_data.get("message")
+                or payload_data.get("mensagem")
+                or "Um novo código de verificação foi enviado para o seu e-mail."
+            )
+            return json.dumps({
+                "status": "sucesso",
+                "mensagem": str(success_msg),
+                "message": str(success_msg),
+            })
+        except Exception as e:
+            return json.dumps({"status": "erro", "mensagem": f"Falha ao reenviar e-mail: {str(e)}"})
+
+    @Slot(str)
+    def reenviarEmailPreCadastro(self, email: str):
+        """
+        Dispara o reenvio do código de verificação em segundo plano (assíncrono).
+        Emite o sinal reenviarEmailFinished(resJson) ao terminar.
+        """
+        self._set_loading(True)
+        def _worker():
+            try:
+                res = self._execute_reenviar_email(email)
+            except Exception as e:
+                res = json.dumps({"status": "erro", "mensagem": f"Falha ao reenviar e-mail: {str(e)}"})
+            finally:
+                self._set_loading(False)
+            self.reenviarEmailFinished.emit(res)
 
         threading.Thread(target=_worker, daemon=True).start()
 
