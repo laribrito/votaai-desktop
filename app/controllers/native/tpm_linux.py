@@ -384,7 +384,7 @@ def generate_key():
         "Provider": "Linux Software (AES-256-GCM encrypted, outside TEE)",
         "Storage": "software-encrypted",
         "TPMHandle": None,
-        "Note": "Chave da eleicao armazenada fora do TEE para apuracao soberana."
+        "Note": "Chave da eleicao armazenada fora do TEE para apuracao."
     }
 
     with open(meta_path, 'w', encoding='utf-8') as f:
