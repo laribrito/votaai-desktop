@@ -26,9 +26,11 @@ Rectangle {
     property alias totpInput: totpInput
     property alias submitLoginBtn: submitLoginBtn
     property alias togglePasswordBtn: togglePasswordBtn
+    property alias auditarBtn: auditarBtn
 
     signal submitLoginClicked
     signal togglePasswordVisibilityClicked
+    signal auditarClicked
 
     // Cabeçalho da Página
     Text {
@@ -208,6 +210,42 @@ Rectangle {
         font.bold: true
         wrapMode: Text.WordWrap
         visible: root.errorMessage !== ""
+    }
+
+    // Botão de Auditoria Pública
+    Button {
+        id: auditarBtn
+        x: 45
+        y: Constants.height - height - 30
+        width: 170
+        height: 40
+        text: qsTr("Auditar Eleição")
+
+        background: Rectangle {
+            color: parent.down ? "#2b3d4f" : (parent.hovered ? "#3e5770" : "#34495e")
+            radius: 6
+            Rectangle {
+                z: -1
+                width: parent.width
+                height: parent.height
+                y: 3
+                color: "#33000000"
+                radius: 6
+            }
+        }
+        contentItem: Text {
+            text: parent.text
+            color: "white"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 13
+            font.bold: true
+        }
+        Connections {
+            function onClicked() {
+                root.auditarClicked()
+            }
+        }
     }
 
     // Botão de Ação Principal (Canto Inferior Direito)
