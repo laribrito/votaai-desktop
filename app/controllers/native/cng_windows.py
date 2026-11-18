@@ -297,12 +297,15 @@ def _rsa_public_to_cng_blob(public_key: rsa.RSAPublicKey) -> bytes:
     header = struct.pack('<IIIIII', magic, public_key.key_size, len(e_bytes), len(n_bytes), 0, 0)
     return header + e_bytes + n_bytes
 
-def generate_key():
+def generate_key(key_name=None):
     """
     Gera a chave da eleição fora do hardware seguro (TEE) para viabilizar a ação de apurar.
+    Cada eleição recebe um key_handle único (votaai_election_<16_hex>).
     A chave privada da eleição NUNCA é salva no chip TPM, permanecendo em software.
     """
-    key_name = "votaai_desktop_hw_key"
+    import secrets
+    if not key_name:
+        key_name = f"votaai_election_{secrets.token_hex(8)}"
     pub_pem = _software_generate_key(key_name)
     pub_key = serialization.load_pem_public_key(pub_pem.encode('utf-8'))
     cng_blob = _rsa_public_to_cng_blob(pub_key)

@@ -103,12 +103,15 @@ def generate_rsa_key(key_name="VotaAI_DesktopClient_Key"):
         "Provider": "macOS (AES-256-GCM encrypted, IOPlatformUUID derived key)"
     }
 
-def generate_key():
+def generate_key(key_name=None):
     """
     Gera a chave da eleição fora do hardware seguro (TEE) para viabilizar a ação de apurar.
+    Cada eleição recebe um key_handle único (votaai_election_<16_hex>).
     A chave privada da eleição NUNCA é salva no chip/enclave, permanecendo em software.
     """
-    key_name = "votaai_desktop_hw_key"
+    import secrets
+    if not key_name:
+        key_name = f"votaai_election_{secrets.token_hex(8)}"
     meta = generate_rsa_key(key_name)
     return meta.get("PublicKeyBase64"), meta.get("KeyName")
 

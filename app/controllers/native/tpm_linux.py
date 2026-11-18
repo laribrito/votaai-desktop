@@ -364,13 +364,16 @@ def generate_rsa_key(key_name="VotaAI_DesktopClient_Key"):
 
     return meta
 
-def generate_key():
+def generate_key(key_name=None):
     """
     Gera a chave da eleição fora do hardware seguro (TEE) para viabilizar a ação de apurar.
+    Cada eleição recebe um key_handle único (votaai_election_<16_hex>).
     A chave privada da eleição NUNCA é salva no chip TPM, permanecendo em armazenamento
     de software local protegido (cifrado com machine-id secret).
     """
-    key_name = "votaai_desktop_hw_key"
+    import secrets
+    if not key_name:
+        key_name = f"votaai_election_{secrets.token_hex(8)}"
     pub_pem = _software_generate_key(key_name)
     pub_key = serialization.load_pem_public_key(pub_pem.encode('utf-8'))
     cng_blob = _rsa_public_to_cng_blob(pub_key)
