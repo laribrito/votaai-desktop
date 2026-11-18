@@ -9,4 +9,6 @@ app/resources/initial_key.json
 app/resources/totp_qr.png
 app/resources/registration_info.json
 app/resources/.client_keys/
+app/resources/.election_keys/
+app/resources/election_keys/
 

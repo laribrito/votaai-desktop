@@ -64,6 +64,12 @@ Window {
             onLoginSucesso: {
                 stackView.replace(mainComponent)
             }
+            onAuditarClicked: {
+                var item = stackView.push("Auditoria.qml")
+                if (item) {
+                    item.backClicked.connect(function() { stackView.pop() })
+                }
+            }
         }
     }
 
@@ -75,6 +81,12 @@ Window {
             }
             onIrParaMainClicked: {
                 stackView.replace(autenticacaoComponent)
+            }
+            onAuditarClicked: {
+                var item = stackView.push("Auditoria.qml")
+                if (item) {
+                    item.backClicked.connect(function() { stackView.pop() })
+                }
             }
         }
     }

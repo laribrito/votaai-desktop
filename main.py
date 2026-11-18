@@ -48,6 +48,10 @@ if __name__ == "__main__":
     close_election_controller = CloseElectionController()
     engine.rootContext().setContextProperty("closeElectionController", close_election_controller)
     
+    from app.controllers.tallyElectionController import TallyElectionController
+    tally_election_controller = TallyElectionController()
+    engine.rootContext().setContextProperty("tallyElectionController", tally_election_controller)
+    
     # Adicionando o caminho de importação das pastas do projeto QML (necessário pro Qt encontrar a pasta design)
     qml_dir = Path(__file__).parent / "Design"
     engine.addImportPath(str(qml_dir))

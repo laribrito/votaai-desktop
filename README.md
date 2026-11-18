@@ -68,9 +68,22 @@ python main.py
 
 ## 🔒 Arquitetura de Segurança Multiplataforma
 
-- **Windows:** Integração com TPM nativo via [cng_windows.py](app/controllers/native/cng_windows.py) (**Windows CNG / `ncrypt.dll`**).
-- **Linux / macOS:** Provedor seguro via [tpm_linux.py](app/controllers/native/tpm_linux.py) e [enclave_mac.py](app/controllers/native/enclave_mac.py) com chaves protegidas e permissões estritas de arquivo (`0600`).
-- **Comunicação Segura:** Todos os payloads trafegam em envelopes cifrados com **AES-GCM**, onde a chave AES é protegida pela chave pública RSA do servidor e assinada com a chave privada residente no dispositivo.
+O aplicativo implementa uma separação estrutural estrita entre a **Identidade da Máquina Administrativa** e a **Criptografia das Eleições**:
+
+1. **Chave de Identidade da Máquina (`VotaAI_DesktopClient_Key`) e `machine_fingerprint`:**
+   - **Confinamento Estrito em Hardware (TEE):** Reside permanentemente no chip criptográfico seguro (**TPM 2.0** no Linux, **Windows CNG Platform Crypto Provider** no Windows ou **Apple Secure Enclave** no macOS).
+   - **Finalidade:** Assinar payloads e autenticar que as requisições administrativas partem exclusivamente da estação física autorizada, sem possibilidade de extração da chave privada.
+   - **Identificador Público Não-Replicável (`machine_fingerprint`):** Nas informações públicas de eleição e nos pacotes de auditoria (`dados_eleicao.json`), a máquina é identificada por `mach_<16_hex>` (fingerprint SHA-256 derivado da chave pública RSA do TPM da máquina), permitindo comprovar que duas eleições foram conduzidas pela mesma estação física **sem expor** `/etc/machine-id`, endereço MAC ou o `device_id` de autenticação.
+
+2. **Chave Dedicada e Exclusiva por Eleição (`votaai_election_<16_hex>`):**
+   - **Identificador Único (`key_handle`):** Cada nova eleição recebe um `key_handle` exclusivo no formato `votaai_election_<16_hex>` (gerado com 8 bytes de entropia criptográfica CSPRNG e validado como `UNIQUE` no backend), isolando os arquivos `.enc` e `.meta.json` de cada pleito.
+   - **Armazenamento Seguro Fora do Hardware TEE (*Machine-Bound Key Wrapping*):** Gerada com alta entropia criptográfica (CSPRNG), mas mantida **fora do chip de hardware** para viabilizar a **ação de apuração soberana**.
+   - **Cifragem em Repouso:** A chave privada é serializada em PKCS#8 PEM e cifrada em disco com **AES-256-GCM**, cuja chave é derivada via **PBKDF2-HMAC-SHA256 (200.000 iterações)** a partir de um identificador físico exclusivo da máquina (`/etc/machine-id` no Linux, `IOPlatformUUID` no macOS, GUID/hostname no Windows). Salva em [`app/resources/.client_keys/votaai_election_<16_hex>.enc`](app/resources/.client_keys/) com permissões estritas `chmod 0600`.
+   - **Comunicação Segura:** Todos os payloads trafegam em envelopes cifrados com **AES-GCM**, onde a chave AES é protegida pela chave pública RSA do servidor e assinada com a chave privada residente no dispositivo.
+
+### ❓ Por que a chave da eleição não é mantida no chip TEE?
+- **Impossibilidade de Exportação (*Non-Extractability*):** Os chips de hardware seguro (TPM 2.0, Secure Enclave) foram projetados para que chaves privadas geradas internamente **nunca** possam ser exportadas em texto plano. Se a chave da eleição ficasse no chip, a apuração seria refém exclusiva daquela placa-mãe. Em caso de dano ou queima do hardware, a eleição inteira seria perdida de forma irrecuperável.
+- **Segurança Garantida:** Mesmo fora do TEE, a chave nunca fica em texto plano no disco; ela permanece cifrada em repouso e só é decifrada na memória RAM durante as operações da aplicação.
 
 > 💡 **Detalhamento Criptográfico:** Para a análise aprofundada de cada fase, algoritmos matemáticos, tamanhos de chaves e tabela de primitivas, veja a seção [Especificação Detalhada de Todas as Etapas de Criptografia (Desktop)](#-especificação-detalhada-de-todas-as-etapas-de-criptografia-desktop).
 
@@ -100,10 +113,13 @@ flowchart TD
     FlowAuth --> MainPanel["Painel Principal (Main.ui.qml)"]
     CheckAuth -- Sim --> MainPanel
     
-    MainPanel --> Action1["Ação 3 e 4: Criar Eleição<br/>(Importação CSV + Cédula + Chave no TPM)"]
+    MainPanel --> Action1["Ação 3 e 4: Criar Eleição<br/>(Importação CSV + Cédula + key_handle único)"]
     MainPanel --> Action2["Ação 5: Iniciar Eleição<br/>(Nonce Anti-Replay + Dupla Assinatura)"]
     MainPanel --> Action3["Ação 6: Fechar Eleição<br/>(Bloqueio de Votos + Quórum Congelado)"]
     MainPanel --> Action4["Ação 7: Apurar Eleição<br/>(Decifração e Contagem dos Votos)"]
+    MainPanel --> Action5["Ação 8: Auditoria Pública de Pacote ZIP<br/>(Auditoria.qml)"]
+    PageCadastro -.-> Action5
+    PageAuth -.-> Action5
 ```
 
 ---
@@ -220,11 +236,11 @@ sequenceDiagram
     Admin->>UI: Clica em "Salvar Eleição"
     UI->>ElectionCtrl: createElection(titulo, cedula_json)
     
-    Note over ElectionCtrl,TPM: Geração da Chave da Eleição no Hardware
+    Note over ElectionCtrl,TPM: Geração da Chave da Eleição fora do TEE
     ElectionCtrl->>TPM: generate_hardware_keys()
-    Note over TPM: Cria novo par RSA isolado no chip seguro
+    Note over TPM: Cria par RSA 2048 bits fora do TEE (CSPRNG)<br/>e cifra em repouso com AES-256-GCM (Machine-Bound)
     TPM-->>ElectionCtrl: Retorna public_key e key_handle
-    Note right of TPM: A chave privada da eleição NUNCA sai do chip/armazenamento seguro!
+    Note right of TPM: Chave privada protegida fora do hardware para viabilizar apuração soberana
 
     ElectionCtrl->>ElectionCtrl: Monta payload com title, public_key, key_handle, ballot e electoral_college
     ElectionCtrl->>TPM: Assina payload com a chave privada da máquina (RSA-PSS)
@@ -344,31 +360,72 @@ sequenceDiagram
 
 ### 8. Ação 7: Apuração dos Resultados da Eleição (`Apurar.qml`)
 
-Ação de decifração soberana e contagem dos votos em hardware:
+Ação de decifração soberana e contagem dos votos em software na memória RAM:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Admin as Administrador
     participant UI as Interface (Apurar.qml)
-    participant Ctrl as Controllers (Python)
-    participant TPM as TPM 2.0 / Secure Enclave
+    participant Ctrl as TallyElectionController
+    participant Crypto as CryptoController / Native
     participant API as Backend (API)
+    actor Publico as Auditor / Qualquer Pessoa
 
-    Admin->>UI: Clica em "Apurar Eleição"
-    UI->>Ctrl: Dispara processo de totalização
-    Ctrl->>API: Requisita os votos cifrados da eleição
-    API-->>Ctrl: Retorna cédulas cifradas com a chave pública da eleição
-    Ctrl->>TPM: Descriptografa votos utilizando a chave privada residente (key_handle)
-    Note over TPM: A decifração ocorre no módulo seguro (a chave nunca é exposta)
-    TPM-->>Ctrl: Votos individuais decifrados
-    Ctrl->>Ctrl: Totaliza votos por questão e gera estatísticas
-    Ctrl-->>UI: Exibe relatório de apuração e resultados oficiais
+    Admin->>UI: Seleciona eleição CLOSED e clica "Apurar Eleição"
+    UI->>Ctrl: tallyElection(keyHandle)
+    Ctrl->>API: POST /api/election/tally/votes/ (com machine_signature no envelope)
+    API-->>Ctrl: Retorna cédulas cifradas da urna { id_generated, content }
+    
+    loop Para cada voto da urna
+        Ctrl->>Crypto: decrypt_vote(key_handle, content)
+        Crypto-->>Ctrl: Cédula decifrada na memória RAM
+    end
+
+    Ctrl->>Ctrl: Contabiliza opções por questão e gera tally_hash (SHA-256)
+    Ctrl->>Crypto: export_election_private_key(key_handle)
+    Crypto-->>Ctrl: Chave privada da eleição em formato PEM (PKCS#8)
+
+    Ctrl->>API: POST /api/election/tally/ { keyHandle, tally_hash, private_key, results, nonceClient }
+    Note over API: 1. Valida assinatura da máquina física criadora<br/>2. Valida derivação matemática de private_key com public_key<br/>3. Cria registro de Tally(tally_hash)<br/>4. Salva election.private_key e atualiza status para TALLIED
+    API-->>Ctrl: Confirmação da apuração oficial e persistência
+    Ctrl-->>UI: Exibe resumo dos resultados e hash de auditoria
+
+    Note over Publico,API: Auditoria Pública Aberta
+    Publico->>API: GET /api/public/elections/<id>/audit-package/
+    API-->>Publico: Retorna ZIP (chave_privada.pem, votos_criptografados.json, dados_eleicao.json, LEIAME.txt)
+    Note over Publico: Qualquer pessoa pode importar o pacote ZIP na tela Auditoria.qml,<br/>reexecutar a apuração de forma soberana e conferir o tally_hash
 ```
 
 ---
 
-### 9. Protocolo Criptográfico de Envelope Híbrido (Sign-then-Encrypt)
+### 9. Ação 8: Auditoria Pública Independente de Pacote ZIP (`Auditoria.qml`)
+
+Qualquer cidadão ou auditor (mesmo sem login administrativo, diretamente pelas telas de Login/Cadastro ou pelo Painel Principal) pode importar o pacote ZIP oficial de uma eleição apurada (`auditoria_eleicao_<id>.zip`) para decifrar todas as cédulas localmente, recalcular a contagem e verificar a integridade matemática do `tally_hash`:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Auditor as Auditor / Cidadão
+    participant UI as Interface (Auditoria.qml)
+    participant Ctrl as TallyElectionController
+    participant ZIP as Pacote ZIP Local
+
+    Auditor->>UI: Seleciona arquivo auditoria_eleicao_<id>.zip e clica em "Executar Auditoria"
+    UI->>Ctrl: auditZip(zip_path)
+    Ctrl->>ZIP: Extrai chave_privada.pem, votos_criptografados.json e dados_eleicao.json
+    ZIP-->>Ctrl: Metadados (title, key_handle, machine_fingerprint, tally_hash, questions, total_voters)
+    loop Para cada voto em votos_criptografados.json
+        Ctrl->>Ctrl: decrypt_vote_with_pem(chave_privada.pem, vote.content)
+    end
+    Ctrl->>Ctrl: tally_votes_core() -> Contabiliza votos, abstenção e recalcula calculated_hash (SHA-256)
+    Ctrl->>Ctrl: Compara calculated_hash == expected_hash (tally_hash oficial)
+    Ctrl-->>UI: Emite auditFinished com status de integridade, keyHandle, machine_fingerprint e contagem detalhada
+```
+
+---
+
+### 10. Protocolo Criptográfico de Envelope Híbrido (Sign-then-Encrypt)
 
 Padrão de comunicação utilizado em **todas** as interações entre o aplicativo Desktop e o Servidor Backend:
 
@@ -469,17 +526,20 @@ O acesso às funcionalidades do painel administrativo exige a combinação de m�
 
 ### Etapa 4: Criação de Eleição e Geração de Chave Dedicada da Eleição (`Election Key`)
 
-Para garantir que a urna eletrônica seja totalmente cega e que nem mesmo o servidor backend consiga decifrar votos antes da apuração, cada eleição possui sua própria chave criptográfica isolada:
+Para garantir que a urna eletrônica seja totalmente cega e que nem mesmo o servidor backend consiga decifrar votos antes da apuração, cada eleição possui sua própria chave criptográfica assimétrica isolada:
 
-1. **Geração de Chave Dedicada da Eleição no Hardware (`generate_hardware_keys`):**
-   - O controlador aciona o módulo de segurança para gerar um novo par RSA 2048 bits isolado.
-   - **No Linux TPM:** Aloca um handle persistente específico para a eleição.
-   - **No Windows CNG:** Cria um contêiner exclusivo de chave sob o provedor de plataforma.
-   - **Segredo Confinado:** A chave privada da eleição **permanece permanentemente no hardware seguro** do desktop do administrador e jamais é transmitida pela rede.
+1. **Geração de Chave Dedicada da Eleição Fora do Hardware TEE (`generate_hardware_keys`):**
+   - O controlador aciona o backend nativo da plataforma (`tpm_linux`, `cng_windows` ou `enclave_mac`).
+   - Um novo par RSA 2048 bits ($e=65537$) é gerado utilizando gerador criptográfico de alta entropia (**CSPRNG**).
+   - **Armazenamento Protegido em Repouso (*Machine-Bound Key Wrapping*):** A chave privada da eleição **não é salva dentro do chip TEE**, pois os chips seguros não permitem a exportação de chaves privadas em texto plano (*non-extractability*), o que inviabilizaria a apuração soberana e ágil em lote. Em vez disso:
+     - O PEM da chave privada é cifrado via **AES-256-GCM** com uma chave derivada do hardware local via **PBKDF2-HMAC-SHA256 (200.000 iterações)** a partir de um segredo único da máquina (`/etc/machine-id`, `IOPlatformUUID` ou Machine GUID).
+     - Um identificador exclusivo `key_handle = f"votaai_election_{secrets.token_hex(8)}"` é atribuído à eleição.
+     - O arquivo cifrado é gravado em [`app/resources/.client_keys/votaai_election_<16_hex>.enc`](app/resources/.client_keys/) com permissões restritas `chmod 0600`.
+     - Metadados públicos são gravados em `votaai_election_<16_hex>.meta.json` com `"Storage": "software-encrypted"` e `"TPMHandle": null`.
 2. **Construção e Cifragem da Cédula Oficial:**
-   - Monta-se o payload contendo o título, as perguntas/opções, a lista do colégio eleitoral validada pelo CSV, a **chave pública da eleição** gerada e o identificador do handle (`key_handle`).
-   - O payload é assinado com a chave da máquina e cifrado com AES-256-GCM + chave do servidor.
-   - Requisição enviada para `POST /api/election/create/`.
+   - Monta-se o payload contendo o título, as perguntas/opções, a lista do colégio eleitoral validada pelo CSV, a **chave pública da eleição** gerada (em formato Base64 CNG Blob ou PEM) e o identificador exclusivo do handle (`key_handle = "votaai_election_<16_hex>"`).
+   - O payload é assinado com a chave da máquina (residente no TPM) e cifrado com AES-256-GCM + chave do servidor.
+   - Requisição enviada para `POST /api/election/create/`, onde o backend valida a unicidade do `key_handle` e registra também o `machine_fingerprint` (`mach_<16_hex>`) derivado da chave pública da máquina.
    - A partir deste momento, todos os votos que os eleitores depositarem no aplicativo mobile serão cifrados com esta chave pública da eleição.
 
 ---
@@ -568,18 +628,29 @@ O encerramento oficial encerra a recepção de votos, congela as métricas do qu
 
 ---
 
-### Etapa 8: Apuração dos Votos por Hardware (`Tallying`)
+### Etapa 8: Apuração Soberana dos Votos (`Tallying`) e Revelação da Chave Privada
 
-Ao término da votação e com o quórum devidamente congelado, realiza-se o processo soberano de decifração e contagem:
+Ao término da votação e com o quórum devidamente congelado, realiza-se o processo soberano de decifração, contagem e abertura pública:
 
-1. **Download das Cédulas Cifradas (`Apurar.qml`):**
-   - O aplicativo desktop requisita todos os votos registrados no banco de dados da urna.
-   - Cada voto registrado no servidor está cifrado com a chave pública da eleição gerada na Etapa 4.
-2. **Decifração em Hardware e Contagem Local:**
-   - Para cada cédula cifrada recebida, o desktop aciona o hardware de segurança passando o identificador da eleição:
-     $$\text{voto\_plano} = \text{HardwareDecrypt}(key\_handle, \text{voto\_cifrado})$$
-   - A decifração ocorre estritamente dentro do enclave/chip seguro. A chave privada da eleição **jamais é revelada**.
-   - O controlador Python contabiliza as respostas, computa os totais e gera o relatório oficial de apuração com hashes de integridade.
+1. **Download das Cédulas Cifradas (`POST /api/election/tally/votes/`):**
+   - O aplicativo desktop autenticado requisita todos os votos registrados no banco de dados da urna para a eleição fechada (`CLOSED`).
+   - Apenas a máquina criadora autenticada no TPM pode acessar as cédulas cifradas nesta fase.
+2. **Decifração em Memória RAM e Contagem Local (`decrypt_vote`):**
+   - O desktop invoca o método de decifração do backend nativo (`crypto_controller.decrypt_vote(key_handle, vote_content)`).
+   - A chave privada da eleição é decifrada na memória volátil usando a chave AES derivada da máquina física.
+   - O algoritmo decifra com alta velocidade na CPU:
+     - **Cédula RSA direta:** decifrada com PKCS#1 v1.5 ou OAEP.
+     - **Modelo em camadas:** extrai `pacote_cifrado` do payload `{ id_voto, pacote_cifrado }`.
+     - **Envelope híbrido AES-GCM + RSA:** decifra a chave AES com RSA e decifra a cédula com AES-256-GCM.
+   - O controlador contabiliza as escolhas, totaliza votos por questão e calcula o hash criptográfico canônico de auditoria (`tally_hash = SHA-256`).
+3. **Exportação da Chave Privada da Eleição (`export_election_private_key`):**
+   - Como a chave reside fora do hardware TEE (criptografada em repouso), ela é decifrada na memória e serializada em formato **PKCS#8 PEM**.
+4. **Envio da Primeira Apuração Oficial (`POST /api/election/tally/`):**
+   - O Desktop monta o envelope híbrido autenticado pela assinatura de hardware TPM da máquina contendo `{ keyHandle, tally_hash, private_key, results, nonceClient }`.
+   - O servidor backend valida a assinatura da máquina, confirma que a `private_key` deriva matematicamente a `public_key` da eleição, cria o registro `Tally(tally_hash)`, persiste `election.private_key = private_key` e atualiza o status do pleito para `TALLIED`.
+5. **Auditoria Pública por Qualquer Pessoa (`Auditoria.qml` e Pacote ZIP):**
+   - Com o status `TALLIED`, o pacote oficial de auditoria (`GET /api/public/elections/<id>/audit-package/`) torna-se disponível publicamente contendo `chave_privada.pem`, `votos_criptografados.json`, `dados_eleicao.json` (com `key_handle` exclusivo da eleição e `machine_fingerprint` público não-replicável da máquina apuradora) e `LEIAME.txt`.
+   - Qualquer auditor ou cidadão pode importar o arquivo ZIP na tela **Auditoria** do aplicativo Desktop para decifrar todas as cédulas com a chave privada PEM, reexecutar o núcleo unificado de contagem (`tally_votes_core`) e confirmar matematicamente que o hash SHA-256 calculado coincide com o `tally_hash` oficial declarado.
 
 ---
 
@@ -589,7 +660,8 @@ Ao término da votação e com o quórum devidamente congelado, realiza-se o pro
 | :--- | :--- | :--- | :--- | :--- |
 | **Identidade da Máquina** | RSA | 2048 bits ($e=65537$) | PKCS#1 v1.5 / PSS | TPM 2.0 (`0x81010010`) / Windows CNG (`MS_PLATFORM_CRYPTO_PROVIDER`) |
 | **Assinatura de Payloads** | RSA-PSS | 2048 bits | MGF1(SHA-256), Salt MAX | `tpm2_sign` / `NCryptSignHash` (Hardware Seguro) |
-| **Chave da Eleição** | RSA | 2048 bits ($e=65537$) | PKCS#1 v1.5 / RSAES | TPM 2.0 / Windows CNG (Isolamento por Pleito) |
+| **Chave da Eleição** | RSA | 2048 bits ($e=65537$) | PKCS#1 v1.5 / OAEP | CSPRNG, protegida em repouso fora do TEE (`.client_keys/`) |
+| **Proteção da Chave da Eleição** | PBKDF2-HMAC-SHA256 + AES-GCM | 256 bits | 200.000 iterações, Tag 128 bits | Vinculado ao hardware (`machine-id` / `IOPlatformUUID`) |
 | **Cifragem de Sessão** | AES-GCM | 256 bits ($K_{\text{AES}}$) | NoPadding, Tag 128 bits | `cryptography.hazmat.primitives.ciphers.aead.AESGCM` |
 | **Vetor de Inicialização (IV)** | Aleatório CSPRNG | 96 bits (12 bytes) | N/A | `os.urandom(12)` |
 | **Cifragem da Chave AES** | RSA Assimétrico | 2048 bits (Chave Servidor 1) | PKCS#1 v1.5 | `padding.PKCS1v15()` / Chave `VotaAI_SecureKey_1` |

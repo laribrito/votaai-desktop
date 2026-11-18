@@ -3,10 +3,135 @@ import QtQuick.Controls
 
 ApurarForm {
     id: form
-    
+
+    property var availableElections: []
+
+    Component.onCompleted: {
+        isLoading = true
+        tallyElectionController.fetchClosedElections()
+    }
+
+    Connections {
+        target: tallyElectionController
+
+        function onFetchAvailableFinished(resStr) {
+            isLoading = false
+            console.log("[Apurar.qml] onFetchAvailableFinished retorno:", resStr)
+            try {
+                var res = JSON.parse(resStr)
+                if (res.status === "sucesso") {
+                    availableElections = res.elections || []
+                    var titles = []
+                    for (var i = 0; i < availableElections.length; i++) {
+                        titles.push(availableElections[i].titulo)
+                    }
+                    electionComboBox.model = titles
+                    if (availableElections.length === 0) {
+                        statusIsError = false
+                        statusMessage = "Nenhuma eleição fechada disponível para apuração."
+                    }
+                } else {
+                    availableElections = []
+                    electionComboBox.model = []
+                    var msg = res.mensagem || "Erro ao buscar eleições fechadas."
+                    if (typeof msg === 'object') {
+                        var parts = []
+                        for (var k in msg) {
+                            parts.push(k + ": " + (Array.isArray(msg[k]) ? msg[k].join("; ") : msg[k]))
+                        }
+                        msg = parts.join(" | ")
+                    }
+                    statusIsError = true
+                    statusMessage = msg
+                    console.error("Erro ao buscar eleições para apurar: " + msg)
+                }
+            } catch (e) {
+                statusIsError = true
+                statusMessage = "Erro ao carregar dados das eleições."
+                console.error("Erro no JSON de busca: " + e)
+            }
+        }
+
+        function onTallyElectionFinished(resStr) {
+            isLoading = false
+            console.log("[Apurar.qml] Resultado Apuração:", resStr)
+            try {
+                var res = JSON.parse(resStr)
+                if (res.status === "sucesso") {
+                    statusIsError = false
+                    isElectionTallied = true
+                    statusMessage = "Apuração soberana concluída e chave privada publicada!"
+
+                    var details = "Total de cédulas apuradas: " + (res.total_votos !== undefined ? res.total_votos : 0) + "\n"
+                    var resObj = res.results || {}
+                    var abstPct = res.abstention_percentage !== undefined ? res.abstention_percentage : (resObj.abstention_percentage !== undefined ? resObj.abstention_percentage : 0.0)
+                    var abstCount = res.abstention_count !== undefined ? res.abstention_count : (resObj.abstention_count !== undefined ? resObj.abstention_count : 0)
+                    details += "Abstenção: " + (typeof abstPct === 'number' ? abstPct.toFixed(1) : abstPct) + "% (" + abstCount + " ausente(s))\n"
+                    details += "Audit Hash (SHA-256): " + (res.tally_hash || "N/A") + "\n\n"
+                    details += "--- CONTAGEM DE VOTOS POR QUESTÃO ---\n"
+
+                    var resObj = res.results || {}
+                    if (resObj.questions && Array.isArray(resObj.questions) && resObj.questions.length > 0) {
+                        for (var i = 0; i < resObj.questions.length; i++) {
+                            var qItem = resObj.questions[i]
+                            details += "• " + qItem.question + ":\n"
+                            var optsList = qItem.options || []
+                            for (var j = 0; j < optsList.length; j++) {
+                                var optItem = optsList[j]
+                                var pctStr = (optItem.percentage !== undefined) ? (" (" + optItem.percentage.toFixed(1) + "%)") : ""
+                                details += "   - " + optItem.label + ": " + optItem.votes + " voto(s)" + pctStr + "\n"
+                            }
+                            details += "\n"
+                        }
+                    } else {
+                        var summary = resObj.summary || resObj
+                        for (var q in summary) {
+                            if (q === "questions" || q === "total_votos") continue
+                            details += "• " + q + ":\n"
+                            var opts = summary[q]
+                            for (var opt in opts) {
+                                details += "   - " + opt + ": " + opts[opt] + " voto(s)\n"
+                            }
+                            details += "\n"
+                        }
+                    }
+
+                    tallyDetailsText = details
+                } else {
+                    statusIsError = true
+                    isElectionTallied = false
+                    var msg = res.mensagem || "Erro ao apurar eleição."
+                    if (typeof msg === 'object') {
+                        var parts = []
+                        for (var k in msg) {
+                            parts.push(k + ": " + (Array.isArray(msg[k]) ? msg[k].join("; ") : msg[k]))
+                        }
+                        msg = parts.join(" | ")
+                    }
+                    statusMessage = msg
+                    console.error("Erro ao apurar eleição:", msg)
+                }
+            } catch (e) {
+                statusIsError = true
+                isElectionTallied = false
+                statusMessage = resStr
+                console.error("Erro no JSON tally:", e)
+            }
+        }
+    }
+
     actionBtn.onClicked: {
-        console.log("Apurando a eleição: " + electionComboBox.currentText)
-        // Aqui podemos integrar a chamada ao backend
-        // backend.tallyElection(electionComboBox.currentText)
+        var idx = electionComboBox.currentIndex
+        if (idx >= 0 && idx < availableElections.length) {
+            var selectedHandle = availableElections[idx].keyHandle
+            console.log("Apurando a eleição: " + electionComboBox.currentText + " (handle: " + selectedHandle + ")")
+            statusMessage = ""
+            isLoading = true
+            tallyElectionController.tallyElection(selectedHandle)
+        } else {
+            statusIsError = true
+            statusMessage = "Selecione uma eleição para apurar."
+            console.error("Nenhuma eleição selecionada.")
+        }
     }
 }
