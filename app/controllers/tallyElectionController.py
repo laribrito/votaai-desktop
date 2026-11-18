@@ -457,6 +457,7 @@ class TallyElectionController(QObject):
                 election_meta = json.loads(zf.read(meta_name).decode('utf-8'))
 
             key_handle = str(election_meta.get("key_handle") or election_meta.get("id") or "1")
+            machine_fingerprint = str(election_meta.get("machine_fingerprint") or "")
             questions_meta = election_meta.get("questions", [])
             total_voters = election_meta.get("total_voters", len(raw_votes))
             expected_hash = election_meta.get("tally_hash", "")
@@ -478,6 +479,7 @@ class TallyElectionController(QObject):
                 "status": "sucesso",
                 "titulo": election_title,
                 "keyHandle": key_handle,
+                "machine_fingerprint": machine_fingerprint,
                 "is_valid": is_valid,
                 "calculated_hash": calculated_hash,
                 "expected_hash": expected_hash,

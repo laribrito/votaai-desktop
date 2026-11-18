@@ -21,6 +21,9 @@ AuditoriaForm {
 
                     var title = res.titulo || "Eleição"
                     var details = "ELEIÇÃO: " + title + " (Handle: " + (res.keyHandle || "N/A") + ")\n"
+                    if (res.machine_fingerprint) {
+                        details += "MÁQUINA APURADORA (Fingerprint): " + res.machine_fingerprint + "\n"
+                    }
                     details += "STATUS DA AUDITORIA: " + (res.is_valid ? "Íntegro / Válido (100% autêntico)" : "DIVERGÊNCIA DETECTADA!") + "\n\n"
 
                     details += "--- CONFERÊNCIA CRIPTOGRÁFICA DE HASH ---\n"
