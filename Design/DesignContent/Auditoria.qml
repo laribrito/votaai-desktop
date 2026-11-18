@@ -29,7 +29,7 @@ AuditoriaForm {
                     details += "--- CONFERÊNCIA CRIPTOGRÁFICA DE HASH ---\n"
                     details += "Hash Calculado (SHA-256):\n" + (res.calculated_hash || "N/A") + "\n"
                     details += "Hash Declarado na Ata Oficial (SHA-256):\n" + (res.expected_hash || "N/A") + "\n"
-                    details += "Resultado da Comparação: " + (res.is_valid ? "CONFERE COM SUCESSO" : "NÃO CONFERE - ALERTA DE ADULTERAÇÃO") + "\n\n"
+                    details += "Resultado da Comparação: " + (res.is_valid ? "CONFERE" : "NÃO CONFERE") + "\n\n"
 
                     details += "--- INFORMAÇÕES DO PLEITO ---\n"
                     details += "Total de Cédulas Cifradas Auditadas: " + (res.total_votos !== undefined ? res.total_votos : 0) + "\n"
