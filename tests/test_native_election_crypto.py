@@ -14,12 +14,27 @@ from app.controllers.native import tpm_linux, cng_windows, enclave_mac
 class TestNativeElectionCrypto(unittest.TestCase):
     def setUp(self):
         self.crypto = CryptoController()
+        self._existing_files = set(os.listdir(tpm_linux._get_keys_dir()))
+
+    def tearDown(self):
+        keys_dir = tpm_linux._get_keys_dir()
+        for fname in os.listdir(keys_dir):
+            if fname not in self._existing_files and fname.startswith("votaai_election_"):
+                try:
+                    os.remove(os.path.join(keys_dir, fname))
+                except OSError:
+                    pass
 
     def test_election_key_generation_outside_tee(self):
-        """Gera a chave de eleição e confirma que ela reside fora do hardware TEE/TPM."""
+        """Gera a chave de eleição e confirma que ela reside fora do hardware TEE/TPM com key_handle único."""
         pub_b64, key_handle = self.crypto.generate_hardware_keys()
-        self.assertEqual(key_handle, "votaai_desktop_hw_key")
+        self.assertTrue(key_handle.startswith("votaai_election_"))
         self.assertTrue(len(pub_b64) > 100)
+
+        # Uma segunda chamada deve gerar um key_handle distinto
+        _, second_handle = self.crypto.generate_hardware_keys()
+        self.assertTrue(second_handle.startswith("votaai_election_"))
+        self.assertNotEqual(key_handle, second_handle)
 
         meta_path = tpm_linux._get_key_meta_path(key_handle)
         enc_path = tpm_linux._get_encrypted_key_path(key_handle)
@@ -30,14 +45,14 @@ class TestNativeElectionCrypto(unittest.TestCase):
         with open(meta_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)
 
-        self.assertEqual(meta["KeyName"], "votaai_desktop_hw_key")
+        self.assertEqual(meta["KeyName"], key_handle)
         self.assertEqual(meta["Storage"], "software-encrypted")
         self.assertIsNone(meta.get("TPMHandle"))
 
     def test_election_sign_and_verify(self):
         """Assina dados com a chave da eleição e valida a assinatura RSA-PSS."""
         pub_b64, key_handle = self.crypto.generate_hardware_keys()
-        payload = '{"msg":"START_ELECTION","keyHandle":"votaai_desktop_hw_key"}'
+        payload = f'{{"msg":"START_ELECTION","keyHandle":"{key_handle}"}}'
 
         signature_b64 = self.crypto.sign_data(key_handle, payload)
         self.assertTrue(len(signature_b64) > 0)
@@ -125,7 +140,7 @@ class TestNativeElectionCrypto(unittest.TestCase):
     def test_mac_native_decoupled_crypto(self):
         """Valida que o módulo macOS é independente e descriptografa em software fora do TEE."""
         pub_b64, key_handle = enclave_mac.generate_key()
-        self.assertEqual(key_handle, "votaai_desktop_hw_key")
+        self.assertTrue(key_handle.startswith("votaai_election_"))
         self.assertTrue(len(pub_b64) > 50)
 
         # Assinatura
@@ -158,7 +173,7 @@ class TestNativeElectionCrypto(unittest.TestCase):
     def test_windows_native_decoupled_crypto(self):
         """Valida que o módulo Windows é independente e executa decifra em software fora do TEE."""
         pub_b64, key_handle = cng_windows.generate_key()
-        self.assertEqual(key_handle, "votaai_desktop_hw_key")
+        self.assertTrue(key_handle.startswith("votaai_election_"))
         self.assertTrue(len(pub_b64) > 50)
 
         # Assinatura

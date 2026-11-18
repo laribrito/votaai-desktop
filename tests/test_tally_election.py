@@ -18,6 +18,17 @@ class TestTallyElection(unittest.TestCase):
         self.crypto = CryptoController()
         self.pub_b64, self.key_handle = self.crypto.generate_hardware_keys()
 
+    def tearDown(self):
+        backend = self.crypto.backend
+        for getter in ('_get_key_meta_path', '_get_encrypted_key_path'):
+            if hasattr(backend, getter):
+                path = getattr(backend, getter)(self.key_handle)
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+
     def test_export_election_private_key_pem(self):
         """Exporta a chave privada da eleição em formato PEM e valida correspondência matemática."""
         priv_pem = self.crypto.export_election_private_key(self.key_handle)

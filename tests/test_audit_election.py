@@ -105,6 +105,7 @@ class TestAuditElection(unittest.TestCase):
         dados_eleicao = {
             "id": 10,
             "key_handle": "eleicao_audit_10",
+            "machine_fingerprint": "mach_a1b2c3d4e5f67890",
             "title": "Eleição Reitoria Auditável",
             "tally_hash": expected_hash,
             "total_voters": 2,
@@ -127,6 +128,8 @@ class TestAuditElection(unittest.TestCase):
 
             self.assertEqual(res["status"], "sucesso")
             self.assertEqual(res["titulo"], "Eleição Reitoria Auditável")
+            self.assertEqual(res["keyHandle"], "eleicao_audit_10")
+            self.assertEqual(res["machine_fingerprint"], "mach_a1b2c3d4e5f67890")
             self.assertTrue(res["is_valid"])
             self.assertEqual(res["calculated_hash"], expected_hash)
             self.assertEqual(res["expected_hash"], expected_hash)
