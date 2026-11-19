@@ -10,10 +10,14 @@ class HttpClient:
         self.encryption_controller = EncryptionController()
         self.timeout = timeout
         self.base_url = config('API_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')
+        self.language = config('API_LANGUAGE', default='pt-br')
 
     def post(self, endpoint, payload, custom_headers=None, timeout=None):
         url = endpoint if endpoint.startswith('http') else f"{self.base_url}{endpoint if endpoint.startswith('/') else '/' + endpoint}"
-        headers = {'Content-Type': 'application/json'}
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept-Language': self.language,
+        }
         if custom_headers:
             headers.update(custom_headers)
             
