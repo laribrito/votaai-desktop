@@ -132,11 +132,10 @@ Rectangle {
             width: 24
             height: 24
 
-            Text {
+            EyeIcon {
                 anchors.centerIn: parent
-                text: root.isPasswordVisible ? "👁" : "👁‍🗨"
-                font.pixelSize: 14
-                color: eyeMouseArea.containsMouse ? "#111827" : "#777777"
+                isVisible: root.isPasswordVisible
+                eyeColor: eyeMouseArea.containsMouse ? "#111827" : "#666666"
             }
 
             MouseArea {

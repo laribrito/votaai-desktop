@@ -34,6 +34,8 @@ Rectangle {
         y: 12
         width: 30
         height: 30
+        padding: 0
+        bottomPadding: 4
         text: "←"
 
         background: Rectangle {
