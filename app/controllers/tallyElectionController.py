@@ -13,6 +13,7 @@ from app.controllers.cryptoController import CryptoController
 from app.controllers.encryptionController import EncryptionController
 from app.services.http_client import HttpClient
 from app.services.api_routes import API_ROUTES
+from app.services.security_guard import SecurityGuard
 
 
 def decrypt_vote_with_pem(private_key_pem: str, encrypted_data):
@@ -206,6 +207,7 @@ class TallyElectionController(QObject):
         pela auditoria pública independente (Auditoria).
         Decifra cédulas, tabula contagens por pergunta/opção e gera o hash canônico SHA-256.
         """
+        SecurityGuard.enforce()
         question_map = {}
         option_map = {}
         structured_questions = []
@@ -308,6 +310,7 @@ class TallyElectionController(QObject):
 
     def _execute_tally_election(self, key_handle):
         try:
+            SecurityGuard.enforce()
             print(f"\n[TallyElectionController] >>> _execute_tally_election para keyHandle: {key_handle}")
             
             # --- Etapa 1: Obter votos cifrados da urna ---
@@ -419,6 +422,7 @@ class TallyElectionController(QObject):
 
     def _execute_audit_zip(self, zip_path: str) -> str:
         try:
+            SecurityGuard.enforce()
             print(f"\n[TallyElectionController] >>> _execute_audit_zip para arquivo: {zip_path}")
             if not os.path.exists(zip_path):
                 return json.dumps({
