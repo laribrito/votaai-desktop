@@ -671,6 +671,99 @@ Ao término da votação e com o quórum devidamente congelado, realiza-se o pro
 
 ---
 
+## 🛡️ Esquemas de Defesa em Tempo de Execução: Anti-Root, Anti-Depuração e Anti-Adulteração (`SecurityGuard`)
+
+O módulo `app/services/security_guard.py` implementa uma arquitetura de **Defesa em Profundidade (RASP — Runtime Application Self-Protection)** para proteger o aplicativo Desktop contra execução em ambientes com escalonamento de privilégios, anexação de depuradores (Python, QML ou nativos), *dumps* de memória RAM e adulteração de código ou interface gráfica.
+
+As proteções são inicializadas no boot da aplicação (`main.py`), monitoradas continuamente em background por uma thread *daemon* (`VotaAISecurityWatchdog`) a cada 2 segundos, e revalidadas sincronicamente antes de qualquer operação criptográfica (`CryptoController`) ou processo de apuração/auditoria (`TallyElectionController`). Quando qualquer violação é detectada, o processo é encerrado imediatamente via `os._exit(1)` (evitando que um depurador intercepte exceções `SystemExit`).
+
+### 1. Mecanismos Contra Root e Escalonamento de Privilégios (Anti-Root)
+*Nota: Não exige UEFI Secure Boot ativo na máquina local para garantir compatibilidade com notebooks de desenvolvimento e múltiplos sistemas Linux/Windows.*
+
+- **Bloqueio de Execução como `root` (Linux / macOS):** Verifica `os.geteuid() == 0` e `os.getuid() == 0`, impedindo que a aplicação rode sob a conta de superusuário.
+- **Detecção de Escalonamento via `sudo` / `pkexec`:** Inspeciona a presença das variáveis de ambiente `SUDO_UID`, `SUDO_USER`, `SUDO_COMMAND` e `PKEXEC_UID`.
+- **Bloqueio de Execução como Administrador (Windows):** Consulta a API nativa `shell32.IsUserAnAdmin()` via `ctypes`, rejeitando execução com token elevado.
+- **Trava de Privilégios no Kernel Linux (`PR_SET_NO_NEW_PRIVS`):** Invoca `libc.prctl(38, 1, 0, 0, 0)` no início do processo, garantindo no nível do kernel que nem o aplicativo nem qualquer subprocesso consiga adquirir novos privilégios (como binários `setuid`/`setgid` ou `sudo`).
+- **Isolamento da Chave da Máquina no Hardware (TPM 2.0 / CNG):** Mesmo em cenários onde o atacante possua acesso administrativo ao sistema operacional, a chave privada da máquina (`0x81010010`) permanece selada dentro do chip TPM 2.0 e nunca é exportada para a RAM ou disco.
+
+### 2. Mecanismos Contra Depuração e Inspeção de Memória (Anti-Debugging)
+
+- **Bloqueio de `ptrace` e Core Dumps no Kernel Linux (`PR_SET_DUMPABLE = 0`):** Invoca `libc.prctl(4, 0, 0, 0, 0)` impedindo que outros processos anexem depuradores (`gdb`, `strace`, `ltrace`) à memória do aplicativo e proibindo o sistema operacional de gravar arquivos de *core dump* da memória RAM em disco.
+- **Desativação de Breakpoints Nativos do Python:** Define `os.environ["PYTHONBREAKPOINT"] = "0"` na inicialização do processo.
+- **Bloqueio do Depurador Remoto Qt/QML (`-qmljsdebugger`):** Inspeciona `sys.argv` e variáveis do motor Qt (`QMLSCENE_DEVICE`, `QML_IMPORT_TRACE`), abortando imediatamente caso flags de inspeção visual ou conexão remota QML sejam detectadas.
+- **Detecção de Tracers e Instrumentação no Runtime Python:**
+  - Verifica hooks ativos em `sys.gettrace()`.
+  - Verifica ferramentas registradas na API `sys.monitoring` (`sys.monitoring.get_tool(0..5)` do Python 3.12+).
+  - Varre `sys.modules` bloqueando módulos de depuração e injeção dinâmica (`pdb`, `ipdb`, `pudb`, `pydevd`, `debugpy`, `frida`, `pyinjector`).
+- **Detecção de Depuradores Nativos no Sistema Operacional:**
+  - **Linux (`/proc/self/status`):** Lê continuamente o campo `TracerPid`; qualquer valor diferente de `0` indica um depurador anexado ao processo.
+  - **Linux/macOS (Inspeção de Processo Pai):** Verifica o executável pai (`/proc/<ppid>/comm` ou `ps`) contra ferramentas de engenharia reversa (`gdb`, `lldb`, `strace`, `ltrace`, `radare2`, `r2`, `ida`, `ida64`, `ghidra`, `frida`, `frida-server`, `valgrind`, `x64dbg`, `ollydbg`, `windbg`).
+  - **Windows (`kernel32`):** Consulta `IsDebuggerPresent()` e `CheckRemoteDebuggerPresent()` via `ctypes.windll.kernel32`.
+- **Higienização Explícita de Memória RAM (`zero_sensitive_bytes`):** Buffers mutáveis (`bytearray` / `memoryview`) contendo material de chaves privadas PEM decifradas temporariamente na memória volátil (`tpm_linux.py`) são sobrescritos byte a byte com zeros (`0x00`) em blocos `finally` imediatamente após o uso.
+
+### 3. Mecanismos Contra Adulteração e Hooking (Anti-Tampering)
+
+- **Detecção de Injeção de Bibliotecas Dinâmicas (Anti-Hooking de Ambiente):** Bloqueia a execução caso variáveis de *preload* ou interceptação de chamadas estejam definidas no ambiente: `LD_PRELOAD`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES` e `PYTHONINSPECT` (além de sanitizar automaticamente `PYTHONSTARTUP` e `PYTHONBREAKPOINT=0` na inicialização).
+- **Manifesto Criptográfico de Integridade de Código e Interface (`integrity_manifest.json`):**
+  - Todos os arquivos Python (`main.py`, `app/**/*.py`) e todas as telas Qt Quick/QML (`Design/**/*.qml`, `Design/**/*.ui.qml`) possuem seus hashes **SHA-256** catalogados em `app/resources/integrity_manifest.json`, selados por um `root_hash` canônico.
+  - Na inicialização e periodicamente durante a execução, o `SecurityGuard` recalcula os hashes SHA-256 em disco e aborta caso detecte:
+    1. Modificação de qualquer linha em arquivos `.py` ou `.qml`;
+    2. Remoção de qualquer arquivo obrigatório do sistema;
+    3. Injeção de arquivos `.py` ou `.qml` extras não autorizados nas pastas `app/` ou `Design/`;
+    4. Adulteração do `root_hash` do manifesto.
+- **Proteção Contra *Monkey-Patching* em Memória (`check_runtime_monkey_patching`):**
+  - Na inicialização, o `SecurityGuard` captura o endereço de identidade e o hash SHA-256 do bytecode compilado (`__code__.co_code` e `__code__.co_consts`) das funções críticas do sistema (`os.urandom`, `subprocess.run`, `CryptoController.sign_data`, `CryptoController.decrypt_data`, `CryptoController.decrypt_vote`, `CryptoController.export_election_private_key`, `EncryptionController.encrypt_payload`, `EncryptionController.decrypt_response`, `HttpClient.post`).
+  - Se um script ou agente em memória tentar substituir ou decorar qualquer uma dessas funções em tempo de execução, a divergência de fingerprint é detectada e o aplicativo é encerrado.
+
+### 📋 Tabela Resumo dos Mecanismos de Proteção (`SecurityGuard`)
+
+| Categoria | Mecanismo | Alvo / Camada | Técnica / Primitiva Utilizada |
+| :--- | :--- | :--- | :--- |
+| **Anti-Root** | Bloqueio de Superusuário | Linux / macOS | Verificação de `uid == 0` e `euid == 0` |
+| **Anti-Root** | Bloqueio de `sudo` / `pkexec` | Linux / macOS | Detecção de `SUDO_UID`, `SUDO_USER`, `SUDO_COMMAND`, `PKEXEC_UID` |
+| **Anti-Root** | Bloqueio de Administrador | Windows | `ctypes.windll.shell32.IsUserAnAdmin()` |
+| **Anti-Root** | Trava de Novos Privilégios | Kernel Linux | `prctl(PR_SET_NO_NEW_PRIVS, 1)` |
+| **Anti-Debug** | Bloqueio de Dump de RAM e `ptrace` | Kernel Linux | `prctl(PR_SET_DUMPABLE, 0)` |
+| **Anti-Debug** | Desativação de Breakpoints / REPL | Runtime Python | `PYTHONBREAKPOINT=0` e sanitização automática de `PYTHONSTARTUP` |
+| **Anti-Debug** | Detecção de Debugger Anexado | Linux / Windows | `TracerPid` em `/proc/self/status`, `IsDebuggerPresent`, `CheckRemoteDebuggerPresent` |
+| **Anti-Debug** | Detecção de Engenharia Reversa | Processo Pai (SO) | Bloqueio de `gdb`, `lldb`, `strace`, `ltrace`, `radare2`, `ida`, `ghidra`, `frida` |
+| **Anti-Debug** | Detecção de Debugger Python | Runtime Python | `sys.gettrace()`, `sys.monitoring.get_tool(0..5)` e varredura de `sys.modules` |
+| **Anti-Debug** | Bloqueio de Inspector QML | Motor Qt / PySide6 | Filtragem de `-qmljsdebugger`, `QMLSCENE_DEVICE` e `QML_IMPORT_TRACE` |
+| **Anti-Debug** | Sanitização de Chaves em RAM | Memória Volátil | Sobrescrita explícita com `0x00` (`zero_sensitive_bytes`) após uso de PEM |
+| **Anti-Tamper** | Anti-Preload / Hooking Nativo | Loader Dinâmico | Bloqueio de `LD_PRELOAD`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `PYTHONINSPECT` |
+| **Anti-Tamper** | Integridade de Código e Telas | Disco (`.py` e `.qml`) | Verificação SHA-256 + `root_hash` contra `app/resources/integrity_manifest.json` |
+| **Anti-Tamper** | Anti-Monkey-Patching | Memória RAM (Bytecode) | Fingerprint SHA-256 de `__code__.co_code` e identidade de funções críticas |
+| **Monitoramento** | Watchdog Contínuo | Background Thread | `VotaAISecurityWatchdog` revalidando memória a cada 2s e disco periodicamente |
+
+### 🔧 Comandos Utilitários do Manifesto de Integridade
+
+Sempre que você editar legitimamente um arquivo `.py` ou `.qml` durante o desenvolvimento, atualize o manifesto de integridade com o comando:
+
+```bash
+# Atualiza os hashes SHA-256 em app/resources/integrity_manifest.json
+python -m app.services.security_guard --update-manifest
+
+# Executa um diagnóstico completo (Anti-Root, Anti-Debug e Anti-Tamper)
+python -m app.services.security_guard --verify
+```
+
+*(Dica para desenvolvimento: caso precise depurar o projeto na IDE com `debugpy`/VS Code, defina temporariamente a variável de ambiente `VOTAAI_SECURITY_GUARD=0` no seu ambiente local).*
+
+### 🐧 Executável Standalone para Linux (`dist/votaai-desktop`)
+
+O projeto conta com uma especificação de empacotamento standalone (`votaai-desktop.spec`) via **PyInstaller**, que compila os módulos Python em bytecode embutido no binário ELF, empacota o motor Qt/QML (`PySide6` + `QtQuick.Studio`), o manifesto de integridade `integrity_manifest.json` e o `SecurityGuard`:
+
+```bash
+# Executar o binário Linux diretamente:
+./dist/votaai-desktop
+
+# Recompilar o executável após alterações (sempre atualize o manifesto antes):
+.venv/bin/python -m app.services.security_guard --update-manifest
+.venv/bin/pyinstaller --noconfirm --clean votaai-desktop.spec
+```
+
+---
+
 ## 📂 Estrutura de Pastas
 
 A organização do repositório foi planejada para separar claramente a interface (UI) das regras de negócio (Python) e serviços de rede:
