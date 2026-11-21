@@ -33,12 +33,26 @@ class AuthController(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.http_client = HttpClient()
-        self.resources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
+        self.resources_dir = self._resolve_resources_dir()
         os.makedirs(self.resources_dir, exist_ok=True)
         self._is_authenticated = False
         self._auth_token = None
         self._is_loading = False
         self._pending_password = ""
+
+    @staticmethod
+    def _resolve_resources_dir():
+        import sys
+        if getattr(sys, "frozen", False):
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            for candidate in (
+                os.path.join(exe_dir, "app", "resources"),
+                os.path.join(os.path.dirname(exe_dir), "app", "resources"),
+            ):
+                if os.path.isdir(candidate):
+                    return candidate
+            return os.path.join(exe_dir, "resources")
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
 
     def _get_registration_path(self):
         return os.path.join(self.resources_dir, 'registration_info.json')

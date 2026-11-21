@@ -5,18 +5,19 @@ import Design
 Window {
     id: appWindow
 
-    // Margem de segurança para decorações da janela do SO (barra de títulos/bordas)
-    readonly property int windowDecorationMargin: 40
+    // Margem de segurança para decorações da janela do SO (barra de títulos, painel do sistema e bordas)
+    readonly property int windowDecorationMargin: 80
     readonly property bool isCompactWidth: Screen.desktopAvailableWidth < Constants.width
     readonly property bool isCompactHeight: (Screen.desktopAvailableHeight - windowDecorationMargin) < Constants.height
 
-    width: isCompactWidth ? Screen.desktopAvailableWidth : Constants.width
-    height: isCompactHeight ? (Screen.desktopAvailableHeight - windowDecorationMargin) : Constants.height
-    minimumWidth: width
-    maximumWidth: width
-    minimumHeight: height
-    maximumHeight: height
+    width: isCompactWidth ? Math.max(1024, Screen.desktopAvailableWidth - 20) : Constants.width
+    height: isCompactHeight ? Math.max(680, Screen.desktopAvailableHeight - windowDecorationMargin) : Constants.height
+    minimumWidth: Math.min(1024, width)
+    maximumWidth: Constants.width
+    minimumHeight: Math.min(680, height)
+    maximumHeight: Constants.height
 
+    flags: Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
     visible: true
     title: "Vota Aí"
 

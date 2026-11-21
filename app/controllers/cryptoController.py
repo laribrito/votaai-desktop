@@ -1,5 +1,9 @@
 import sys
 
+def _enforce_security():
+    from app.services.security_guard import SecurityGuard
+    SecurityGuard.enforce()
+
 class CryptoController:
     def __init__(self):
         self.backend = self._load_backend()
@@ -22,25 +26,31 @@ class CryptoController:
 
     def generate_hardware_keys(self):
         """Gera as chaves da eleição fora do hardware seguro (TEE) para viabilizar apuração e retorna (chave_publica, key_handle)."""
+        _enforce_security()
         return self.backend.generate_key()
 
     def generate_rsa_key(self, key_name="VotaAI_DesktopClient_Key"):
         """Gera uma chave RSA no Secure Element / TPM ou provedor seguro da plataforma."""
+        _enforce_security()
         return self.backend.generate_rsa_key(key_name)
 
     def decrypt_with_hardware(self, key_handle, encrypted_data, provider_name=None):
         """Usa a chave privada armazenada (no hardware para máquina ou em software para eleição) para descriptografar os dados."""
+        _enforce_security()
         return self.backend.decrypt_data(key_handle, encrypted_data, provider_name=provider_name)
 
     def decrypt_data(self, key_handle, encrypted_data, provider_name=None):
+        _enforce_security()
         return self.backend.decrypt_data(key_handle, encrypted_data, provider_name=provider_name)
 
     def decrypt_vote(self, key_handle, vote_record):
         """Descriptografa uma cédula de votação para apuração da eleição delegando ao provedor nativo."""
+        _enforce_security()
         return self.backend.decrypt_data(key_handle, vote_record)
 
     def export_election_private_key(self, key_handle):
         """Exporta a chave privada da eleição em formato PEM (PKCS#8) para envio oficial e apuração pública."""
+        _enforce_security()
         if hasattr(self.backend, 'export_private_key_pem'):
             return self.backend.export_private_key_pem(key_handle)
         raise NotImplementedError("O backend criptográfico atual não suporta exportação de chave PEM.")
@@ -51,6 +61,7 @@ class CryptoController:
         Usa a chave de hardware (se máquina) ou software fora do TEE (se eleição).
         Retorna a assinatura em Base64.
         """
+        _enforce_security()
         return self.backend.sign_data(key_handle, payload_string, provider_name=provider_name)
 
     def generate_random(self, num_bytes=32):

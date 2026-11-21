@@ -24,6 +24,8 @@ Rectangle {
     property bool isLoading: false
     property bool isAlreadyRegistered: false
     property string registeredEmailText: ""
+    property bool isPasswordVisible: false
+    property bool isConfirmPasswordVisible: false
 
     property alias emailInput: emailInput
     property alias passwordInput: passwordInput
@@ -53,6 +55,8 @@ Rectangle {
     signal accessMainClicked
     signal directAccessClicked
     signal auditarClicked
+    signal togglePasswordVisibilityClicked
+    signal toggleConfirmPasswordVisibilityClicked
 
     // Cabeçalho da Página
     Text {
@@ -156,14 +160,40 @@ Rectangle {
                 enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                echoMode: TextInput.Password
+                anchors.rightMargin: 36
+                echoMode: root.isPasswordVisible ? TextInput.Normal : TextInput.Password
                 placeholderText: qsTr("Mínimo de 8 caracteres")
                 color: "#333333"
                 font.pixelSize: 12
                 verticalAlignment: Text.AlignVCenter
                 clip: true
                 background: Item {}
+            }
+
+            Item {
+                id: togglePasswordBtn
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                width: 24
+                height: 24
+                visible: !root.isAlreadyRegistered
+
+                EyeIcon {
+                    anchors.centerIn: parent
+                    isVisible: root.isPasswordVisible
+                    eyeColor: cadastroEyeMouseArea1.containsMouse ? "#111827" : "#666666"
+                }
+
+                MouseArea {
+                    id: cadastroEyeMouseArea1
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.togglePasswordVisibilityClicked()
+                    }
+                }
             }
         }
 
@@ -192,14 +222,40 @@ Rectangle {
                 enabled: !root.isAlreadyRegistered
                 anchors.fill: parent
                 anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                echoMode: TextInput.Password
+                anchors.rightMargin: 36
+                echoMode: root.isConfirmPasswordVisible ? TextInput.Normal : TextInput.Password
                 placeholderText: qsTr("Repita a mesma senha")
                 color: "#333333"
                 font.pixelSize: 12
                 verticalAlignment: Text.AlignVCenter
                 clip: true
                 background: Item {}
+            }
+
+            Item {
+                id: toggleConfirmPasswordBtn
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                width: 24
+                height: 24
+                visible: !root.isAlreadyRegistered
+
+                EyeIcon {
+                    anchors.centerIn: parent
+                    isVisible: root.isConfirmPasswordVisible
+                    eyeColor: cadastroEyeMouseArea2.containsMouse ? "#111827" : "#666666"
+                }
+
+                MouseArea {
+                    id: cadastroEyeMouseArea2
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.toggleConfirmPasswordVisibilityClicked()
+                    }
+                }
             }
         }
 

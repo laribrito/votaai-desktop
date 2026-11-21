@@ -11,4 +11,7 @@ app/resources/registration_info.json
 app/resources/.client_keys/
 app/resources/.election_keys/
 app/resources/election_keys/
+/build/
+/dist/
+
 

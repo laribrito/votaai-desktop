@@ -14,6 +14,25 @@ class EncryptionController:
         self.client_key_info, self.machine_public_key_pem = self._load_or_generate_client_hardware_keys()
 
     def _get_resources_dir(self):
+        if getattr(sys, "frozen", False):
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            for candidate in (
+                os.path.join(exe_dir, "app", "resources"),
+                os.path.join(os.path.dirname(exe_dir), "app", "resources"),
+            ):
+                if os.path.isdir(candidate):
+                    return candidate
+            fallback_dir = os.path.join(exe_dir, "resources")
+            os.makedirs(fallback_dir, exist_ok=True)
+            bundled_res = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
+            if os.path.isdir(bundled_res):
+                import shutil
+                for fname in ("initial_key.json", "api_routes.json"):
+                    src = os.path.join(bundled_res, fname)
+                    dst = os.path.join(fallback_dir, fname)
+                    if os.path.exists(src) and not os.path.exists(dst):
+                        shutil.copy2(src, dst)
+            return fallback_dir
         return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resources'))
 
     def _load_server_public_key(self):

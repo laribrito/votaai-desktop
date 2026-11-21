@@ -34,6 +34,18 @@ def _get_tpm_handle(key_name):
     return f"0x8101{0x30 + h:04x}"
 
 def _get_resources_dir():
+    import sys
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        for candidate in (
+            os.path.join(exe_dir, "app", "resources"),
+            os.path.join(os.path.dirname(exe_dir), "app", "resources"),
+        ):
+            if os.path.isdir(candidate):
+                return candidate
+        fallback_dir = os.path.join(exe_dir, "resources")
+        os.makedirs(fallback_dir, exist_ok=True)
+        return fallback_dir
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'resources'))
 
 def _get_keys_dir():
@@ -267,8 +279,12 @@ def _software_load_private_key(key_name):
     with open(enc_path, 'rb') as f:
         encrypted = f.read()
 
-    pem_bytes = _decrypt_pem(encrypted)
-    return serialization.load_pem_private_key(pem_bytes, password=None)
+    pem_buf = bytearray(_decrypt_pem(encrypted))
+    try:
+        return serialization.load_pem_private_key(bytes(pem_buf), password=None)
+    finally:
+        for i in range(len(pem_buf)):
+            pem_buf[i] = 0
 
 def export_private_key_pem(key_handle):
     """

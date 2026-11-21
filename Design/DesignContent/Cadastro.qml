@@ -7,6 +7,14 @@ CadastroForm {
     signal cadastroConcluido
     signal irParaMainClicked
 
+    onTogglePasswordVisibilityClicked: {
+        isPasswordVisible = !isPasswordVisible
+    }
+
+    onToggleConfirmPasswordVisibilityClicked: {
+        isConfirmPasswordVisible = !isConfirmPasswordVisible
+    }
+
     Component.onCompleted: {
         isAlreadyRegistered = authController.isRegistered
         registeredEmailText = authController.registeredEmail
