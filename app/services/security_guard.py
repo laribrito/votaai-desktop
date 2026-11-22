@@ -301,7 +301,8 @@ def _compute_file_sha256(file_path: Path) -> str:
 
 def collect_protected_files(project_root: Path = None) -> list[Path]:
     """
-    Lista todos os arquivos críticos de código (.py) e interface (.qml / .ui.qml)
+    Lista todos os arquivos críticos de código (.py), interface (.qml / .ui.qml)
+    e chave pública ancorada do servidor (app/resources/initial_key.json)
     que compõem a aplicação e devem ter sua integridade monitorada.
     """
     root = project_root or get_project_root()
@@ -316,6 +317,10 @@ def collect_protected_files(project_root: Path = None) -> list[Path]:
         for py_file in sorted(app_dir.rglob("*.py")):
             if "__pycache__" not in py_file.parts:
                 protected.append(py_file)
+
+    initial_key = root / "app" / "resources" / "initial_key.json"
+    if initial_key.exists():
+        protected.append(initial_key)
 
     design_dir = root / "Design"
     if design_dir.exists():
@@ -407,9 +412,9 @@ def verify_file_integrity(project_root: Path = None, manifest_path: Path = None)
     # 3. Verifica se arquivos .py ou .qml extras não autorizados foram injetados
     current_files = {p.relative_to(root).as_posix() for p in collect_protected_files(root)}
     if is_frozen_bundle:
-        current_qml = {f for f in current_files if f.endswith(".qml")}
-        expected_qml = {f for f in expected_files.keys() if f.endswith(".qml")}
-        unexpected_files = current_qml - expected_qml
+        current_assets = {f for f in current_files if not f.endswith(".py")}
+        expected_assets = {f for f in expected_files.keys() if not f.endswith(".py")}
+        unexpected_files = current_assets - expected_assets
     else:
         unexpected_files = current_files - set(expected_files.keys())
 
