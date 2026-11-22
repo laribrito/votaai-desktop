@@ -30,13 +30,13 @@
     "app/controllers/csvController.py": "5e98d33bc0c29cee19f959b4bd3edf7c6e1fa2d8aaf6ad000422cf3f3be4e865",
     "app/controllers/deviceController.py": "9eb1a4210b279992dda817707506ece9bf674f386d64afe8073baaaecf39155a",
     "app/controllers/electionController.py": "62b99f041973c54061d11764479321bc0b0688d28ac5d457efc01d965a55e18e",
-    "app/controllers/encryptionController.py": "b6bf7a4da585d45d961947634a3a529644bc6af9d36702ed41526b7bbe2ea427",
+    "app/controllers/encryptionController.py": "d531043736c9f20af7dfee0786fcf6d10d5d400361edf477d5843a6be9e38710",
     "app/controllers/native/__init__.py": "d88dfbc0d0ba007dbe266b2f607f5d36732bfc3496e4fb90b9aeaf6386e7726a",
-    "app/controllers/native/cng_windows.py": "6bf8c42c51ae3d2d0b232c10825e4c3cec5a48ca18ab15870f0188e51091de71",
-    "app/controllers/native/enclave_mac.py": "746068a4042721de7e6b3a096206f7951d855d25303251c236922a000de0af44",
-    "app/controllers/native/tpm_linux.py": "845a7d44c5628cd2afe2fa01a436780218dc9a9866a14cb5eaccdb69325b0987",
+    "app/controllers/native/cng_windows.py": "264ac78b15574a9912ee9eca9910b752efa5bbce75c6556dfd83a493ba1eb6e2",
+    "app/controllers/native/enclave_mac.py": "7a57db15a037245f6589c51cf650a4a0254f5fae503ec9dfd0e59dd155a72bd3",
+    "app/controllers/native/tpm_linux.py": "4c1171582f70b23bc1468a5e4f124b6d07ef660dbf78ffffaad762e8eb7c6721",
     "app/controllers/startElectionController.py": "dcf2833f5201c343fc97f7688537d50743ca1692269d4851e32b8866c256b85a",
-    "app/controllers/tallyElectionController.py": "7cb782f6302e0f29826761aae3ada6fe5046b66dfad9320792d45868cc8e8d86",
+    "app/controllers/tallyElectionController.py": "3bde2f7ade84c8c395213ce47c8f7f11366108619ba554605b64a2accb301391",
     "app/services/__init__.py": "4ccb3de16db786487f9badf552bdbd7012d0899220a9b51cb45f3c39ba970078",
     "app/services/api_routes.py": "1b973cd95cdf623c508d9dc806eb02c5adaad51a1253ae1d97ca508e5d868095",
     "app/services/election_api.py": "a8802b05215e15aa9a5a4fd8091388987b2cea9bf7a54de8c0e5fa72020d3a6a",
@@ -44,5 +44,5 @@
     "app/services/security_guard.py": "82e5743da9868768a82d6e3b3da4de08cdef1a76768a63613042fc73f4c056c8",
     "main.py": "729ac3bc486810b0d555b1daad2b5d7b6cd9b12f3fa615efd7ab9cf4b61e8441"
   },
-  "root_hash": "2f5d7c35fb08cefa1d26c0d0c6dc9f566127b5ad20820a86cad9dc588fa6f5ce"
+  "root_hash": "70ba1ce57fef24e75cd616c51626a174f157c62ed336a278eeacf6b59c331938"
 }
