@@ -69,12 +69,17 @@ class HttpClient:
                 result_str = response.read().decode('utf-8')
                 print(f"[HttpClient] Resposta recebida de {url} (HTTP {response.status}): {result_str}")
                 try:
-                    decrypted_result = self.encryption_controller.decrypt_response(result_str)
+                    decrypted_result = self.encryption_controller.decrypt_response(
+                        result_str, require_encrypted=True
+                    )
                     print(f"[HttpClient] Resposta descriptografada com sucesso: {decrypted_result}")
                     return {"status": "sucesso", "dados": decrypted_result}
                 except Exception as de:
-                    print(f"[HttpClient] Falha ao descriptografar resposta: {de}")
-                    return {"status": "sucesso", "dados": result_str}
+                    print(f"[HttpClient] Falha ao validar/descriptografar resposta: {de}")
+                    return {
+                        "status": "erro",
+                        "mensagem": f"Falha de segurança: não foi possível validar ou descriptografar a resposta do servidor ({de}).",
+                    }
         except TimeoutError:
             print(f"[HttpClient] Timeout ao aguardar resposta de {url}")
             return {"status": "erro", "mensagem": "O servidor demorou muito para responder (tempo limite esgotado)."}

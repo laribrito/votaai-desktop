@@ -215,12 +215,15 @@ class EncryptionController:
         }
         return envelope
 
-    def decrypt_response(self, response_data):
+    def decrypt_response(self, response_data, require_encrypted: bool = False):
         """
         Descriptografa uma resposta recebida do servidor no formato híbrido (AES-GCM + RSA).
         A chave AES é descriptografada diretamente no Secure Element / TPM de hardware.
+        Quando `require_encrypted=True`, rejeita respostas vazias, não-JSON ou em texto claro.
         """
         if not response_data:
+            if require_encrypted:
+                raise ValueError("A resposta do servidor está vazia e não contém envelope cifrado.")
             return response_data
 
         if isinstance(response_data, (bytes, bytearray)):
@@ -230,12 +233,16 @@ class EncryptionController:
         if isinstance(response_data, str):
             try:
                 data_dict = json.loads(response_data)
-            except Exception:
+            except Exception as exc:
+                if require_encrypted:
+                    raise ValueError("A resposta do servidor não é um envelope JSON cifrado válido.") from exc
                 return response_data
         elif isinstance(response_data, dict):
             data_dict = response_data
 
         if not isinstance(data_dict, dict):
+            if require_encrypted:
+                raise ValueError("A resposta do servidor não contém um envelope criptográfico válido.")
             return response_data
 
         # Verifica se contém os campos de envelope criptografado
@@ -245,7 +252,9 @@ class EncryptionController:
         tag = data_dict.get('tag')
 
         if not encrypted_payload or not encrypted_aes_key or not iv or not tag:
-            # Não é um envelope criptografado, retorna o próprio dict
+            if require_encrypted:
+                raise ValueError("A resposta do servidor não está cifrada. Operação cancelada por segurança.")
+            # Em fluxos que toleram JSON não cifrado (ex.: erros 4xx/5xx), retorna o próprio dict
             return data_dict
 
         if not self.client_key_info:
