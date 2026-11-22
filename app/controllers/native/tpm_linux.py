@@ -17,6 +17,18 @@ TPM2_KEY_HANDLES = {
 }
 TPM2_SIGNING_HANDLE = "0x81010010"
 
+def _unpad_iso7816_4(data: bytes) -> bytes:
+    """Remove preenchimento ISO/IEC 7816-4, preservando payloads legados sem padding."""
+    if not data:
+        return data
+    i = len(data) - 1
+    while i >= 0 and data[i] == 0x00:
+        i -= 1
+    if i >= 0 and data[i] == 0x80 and (i < len(data) - 1 or i == 0 or data[i - 1] < 0x80):
+        return data[:i]
+    return data
+
+
 def _get_tpm_handle(key_name):
     """Retorna o handle persistente no TPM correspondente ao key_name."""
     if key_name in TPM2_KEY_HANDLES:
@@ -477,7 +489,7 @@ def decrypt_data(key_handle, encrypted_data, provider_name=None):
         iv_bytes = base64.b64decode(parsed_dict["iv"])
         tag_bytes = base64.b64decode(parsed_dict["tag"])
         payload_bytes = base64.b64decode(parsed_dict["encrypted_payload"])
-        return aesgcm.decrypt(iv_bytes, payload_bytes + tag_bytes, None)
+        return _unpad_iso7816_4(aesgcm.decrypt(iv_bytes, payload_bytes + tag_bytes, None))
 
     # Caso C: Cifra RSA direta (bytes ou string base64)
     if isinstance(encrypted_data, str):
@@ -486,16 +498,16 @@ def decrypt_data(key_handle, encrypted_data, provider_name=None):
         cipher_bytes = encrypted_data
 
     try:
-        return private_key.decrypt(cipher_bytes, padding.PKCS1v15())
+        return _unpad_iso7816_4(private_key.decrypt(cipher_bytes, padding.PKCS1v15()))
     except Exception:
-        return private_key.decrypt(
+        return _unpad_iso7816_4(private_key.decrypt(
             cipher_bytes,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
                 label=None
             )
-        )
+        ))
 
 def sign_data(key_handle, payload_string, provider_name=None):
     """
