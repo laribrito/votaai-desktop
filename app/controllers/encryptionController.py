@@ -8,6 +8,27 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import serialization, hashes
 from app.controllers.cryptoController import CryptoController
 
+ENVELOPE_PAD_BLOCK_SIZE = 4096
+
+
+def pad_iso7816_4(data: bytes, block_size: int = ENVELOPE_PAD_BLOCK_SIZE) -> bytes:
+    """Aplica preenchimento determinístico ISO/IEC 7816-4 até múltiplo de block_size."""
+    target = ((len(data) // block_size) + 1) * block_size
+    return data + b"\x80" + b"\x00" * (target - len(data) - 1)
+
+
+def unpad_iso7816_4(data: bytes) -> bytes:
+    """Remove preenchimento ISO/IEC 7816-4, preservando payloads legados sem padding."""
+    if not data:
+        return data
+    i = len(data) - 1
+    while i >= 0 and data[i] == 0x00:
+        i -= 1
+    if i >= 0 and data[i] == 0x80 and (i < len(data) - 1 or i == 0 or data[i - 1] < 0x80):
+        return data[:i]
+    return data
+
+
 class EncryptionController:
     def __init__(self):
         self.server_public_key = self._load_server_public_key()
@@ -170,8 +191,8 @@ class EncryptionController:
         signed_payload = dict(clean_payload)
         signed_payload["signature"] = payload_dict.get("signature") or signature_b64
 
-        # 4. Cifra o payload enriquecido com AES-256-GCM
-        json_payload_bytes = json.dumps(signed_payload).encode('utf-8')
+        # 4. Cifra o payload enriquecido com AES-256-GCM aplicando padding ISO/IEC 7816-4
+        json_payload_bytes = pad_iso7816_4(json.dumps(signed_payload).encode('utf-8'), ENVELOPE_PAD_BLOCK_SIZE)
         aes_key = os.urandom(32)
         iv = os.urandom(12)
         aesgcm = AESGCM(aes_key)
@@ -245,7 +266,7 @@ class EncryptionController:
         payload_bytes = base64.b64decode(encrypted_payload)
 
         ciphertext = payload_bytes + tag_bytes
-        decrypted_json_bytes = aesgcm.decrypt(iv_bytes, ciphertext, None)
+        decrypted_json_bytes = unpad_iso7816_4(aesgcm.decrypt(iv_bytes, ciphertext, None))
         decrypted_str = decrypted_json_bytes.decode('utf-8')
 
         try:
