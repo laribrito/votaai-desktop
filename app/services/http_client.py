@@ -1,11 +1,33 @@
 import json
 import socket
+import threading
 import urllib.request
 import urllib.error
+from urllib.parse import urlparse
 from decouple import config
 from app.controllers.encryptionController import EncryptionController
 
 class HttpClient:
+    _auth_token_lock = threading.Lock()
+    _auth_token: str | None = None
+    UNAUTHENTICATED_ROUTE_PREFIXES = ("/api/auth/login", "/api/admin/pre-registration")
+
+    @classmethod
+    def set_auth_token(cls, token: str | None) -> None:
+        with cls._auth_token_lock:
+            clean = (token or "").strip()
+            cls._auth_token = clean or None
+
+    @classmethod
+    def get_auth_token(cls) -> str | None:
+        with cls._auth_token_lock:
+            return cls._auth_token
+
+    @classmethod
+    def clear_auth_token(cls) -> None:
+        with cls._auth_token_lock:
+            cls._auth_token = None
+
     def __init__(self, timeout=30):
         self.encryption_controller = EncryptionController()
         self.timeout = timeout
@@ -14,10 +36,18 @@ class HttpClient:
 
     def post(self, endpoint, payload, custom_headers=None, timeout=None):
         url = endpoint if endpoint.startswith('http') else f"{self.base_url}{endpoint if endpoint.startswith('/') else '/' + endpoint}"
+        path = urlparse(url).path
         headers = {
             'Content-Type': 'application/json',
             'Accept-Language': self.language,
         }
+        has_custom_auth = bool(
+            custom_headers and any(k.lower() == 'authorization' for k in custom_headers.keys())
+        )
+        if not has_custom_auth and not path.startswith(self.UNAUTHENTICATED_ROUTE_PREFIXES):
+            auth_token = self.get_auth_token()
+            if auth_token:
+                headers['Authorization'] = f'Token {auth_token}'
         if custom_headers:
             headers.update(custom_headers)
             

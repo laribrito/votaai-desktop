@@ -3,12 +3,17 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from app.controllers.authController import AuthController
+from app.services.http_client import HttpClient
 
 
 class TestAuthEmailVerification(unittest.TestCase):
     def setUp(self):
+        HttpClient.clear_auth_token()
         self.controller = AuthController()
         self.controller.http_client = MagicMock()
+
+    def tearDown(self):
+        HttpClient.clear_auth_token()
 
     @patch('app.controllers.authController.DeviceController')
     @patch('app.controllers.authController.CryptoController')
@@ -60,6 +65,48 @@ class TestAuthEmailVerification(unittest.TestCase):
         res = json.loads(self.controller._execute_reenviar_email("admin@votaai.org"))
         self.assertEqual(res["status"], "sucesso")
         self.assertIn("new verification code", res["mensagem"])
+
+    @patch('app.services.http_client.urllib.request.urlopen')
+    @patch('app.services.http_client.EncryptionController')
+    def test_http_client_injects_auth_token_only_on_protected_routes(self, mock_enc_cls, mock_urlopen):
+        mock_enc = mock_enc_cls.return_value
+        mock_enc.encrypt_payload.return_value = {"encrypted_payload": "a", "encrypted_aes_key": "b", "iv": "c", "tag": "d"}
+        mock_enc.decrypt_response.return_value = {"ok": True}
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"ok": true}'
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        client = HttpClient()
+        HttpClient.set_auth_token("knox-secret-token-123")
+
+        client.post("/api/election/create/", {"title": "Teste"})
+        req_election = mock_urlopen.call_args_list[-1][0][0]
+        self.assertEqual(req_election.get_header("Authorization"), "Token knox-secret-token-123")
+
+        client.post("/api/auth/login/", {"username": "admin"})
+        req_login = mock_urlopen.call_args_list[-1][0][0]
+        self.assertIsNone(req_login.get_header("Authorization"))
+
+        client.post("/api/admin/pre-registration/start/", {"email": "a@b.c"})
+        req_prereg = mock_urlopen.call_args_list[-1][0][0]
+        self.assertIsNone(req_prereg.get_header("Authorization"))
+
+        HttpClient.clear_auth_token()
+        client.post("/api/election/available/", {"msg": "FETCH_AVAILABLE"})
+        req_after_clear = mock_urlopen.call_args_list[-1][0][0]
+        self.assertIsNone(req_after_clear.get_header("Authorization"))
+
+    def test_auth_controller_logout_clears_http_client_token(self):
+        HttpClient.set_auth_token("knox-active-token")
+        self.controller._auth_token = "knox-active-token"
+        self.controller._is_authenticated = True
+
+        self.controller.logout()
+        self.assertFalse(self.controller.isAuthenticated)
+        self.assertEqual(self.controller.authToken, "")
+        self.assertIsNone(HttpClient.get_auth_token())
 
 
 if __name__ == '__main__':

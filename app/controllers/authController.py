@@ -641,6 +641,7 @@ class AuthController(QObject):
                 return False
         self._is_authenticated = False
         self._auth_token = None
+        HttpClient.clear_auth_token()
         self.authenticationStatusChanged.emit()
         self.registrationStatusChanged.emit()
         return True
@@ -755,6 +756,7 @@ class AuthController(QObject):
                 or ""
             )
             self._auth_token = token
+            HttpClient.set_auth_token(token)
             self._is_authenticated = True
             self.authenticationStatusChanged.emit()
 
@@ -795,5 +797,6 @@ class AuthController(QObject):
     def logout(self):
         self._is_authenticated = False
         self._auth_token = None
+        HttpClient.clear_auth_token()
         self.authenticationStatusChanged.emit()
 

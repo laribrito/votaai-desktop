@@ -24,7 +24,7 @@
     "Design/DesignContent/Main.ui.qml": "1eb677da1124bfa6ac12feed4f5329f268a6d3a47b9efde93f48e7731984c923",
     "Design/DesignContent/ResponsibleUserBadge.qml": "34cae196bee9846741950fd7c13369cf4605ec0b2bb693134581792eea2a14a6",
     "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "app/controllers/authController.py": "ab3c7b21553302ee471ef17ca5afbc417097e2f33e5111cd5af76d0bef92a309",
+    "app/controllers/authController.py": "2bb89a9d1b9770c539a191ef61dc01ea4cabf7035b5b9f7bd4946da8b2ff5703",
     "app/controllers/closeElectionController.py": "f88eee1bc869a7b90de7908fb4cf490edec143a2357465a888a4e33f67f8672e",
     "app/controllers/cryptoController.py": "66838cd3ab361552e6c73d27a7cd91760bc1ae16f3462fc88564cc6a2e27f0b3",
     "app/controllers/csvController.py": "5e98d33bc0c29cee19f959b4bd3edf7c6e1fa2d8aaf6ad000422cf3f3be4e865",
@@ -40,9 +40,9 @@
     "app/services/__init__.py": "4ccb3de16db786487f9badf552bdbd7012d0899220a9b51cb45f3c39ba970078",
     "app/services/api_routes.py": "1b973cd95cdf623c508d9dc806eb02c5adaad51a1253ae1d97ca508e5d868095",
     "app/services/election_api.py": "a8802b05215e15aa9a5a4fd8091388987b2cea9bf7a54de8c0e5fa72020d3a6a",
-    "app/services/http_client.py": "48471b46051a48a7df470b5ee5a51c073bcde85d8e4d1c3be3e21fba696e65b6",
+    "app/services/http_client.py": "791a1e5d3137691413effd501795f6315473a20a2fe43ceded37fd613c65f5b2",
     "app/services/security_guard.py": "82e5743da9868768a82d6e3b3da4de08cdef1a76768a63613042fc73f4c056c8",
     "main.py": "729ac3bc486810b0d555b1daad2b5d7b6cd9b12f3fa615efd7ab9cf4b61e8441"
   },
-  "root_hash": "455d6e9b107872b26e45b840fb125f1b6c94a4802eb10b6ef54898f01955d413"
+  "root_hash": "2f5d7c35fb08cefa1d26c0d0c6dc9f566127b5ad20820a86cad9dc588fa6f5ce"
 }
