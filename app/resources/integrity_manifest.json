@@ -1,6 +1,6 @@
 {
   "algorithm": "SHA-256",
-  "file_count": 41,
+  "file_count": 42,
   "files": {
     "Design/Design/Constants.qml": "181f228c5f82a4e335434fa78b4d7a0523b721753f1225b75eaed2911e3d3fc0",
     "Design/Design/EventListModel.qml": "9f51a379635be8c3d890c95036b47eaf4b79445ec4a6465fc912dbe52b359c45",
@@ -30,19 +30,20 @@
     "app/controllers/csvController.py": "5e98d33bc0c29cee19f959b4bd3edf7c6e1fa2d8aaf6ad000422cf3f3be4e865",
     "app/controllers/deviceController.py": "9eb1a4210b279992dda817707506ece9bf674f386d64afe8073baaaecf39155a",
     "app/controllers/electionController.py": "62b99f041973c54061d11764479321bc0b0688d28ac5d457efc01d965a55e18e",
-    "app/controllers/encryptionController.py": "d531043736c9f20af7dfee0786fcf6d10d5d400361edf477d5843a6be9e38710",
+    "app/controllers/encryptionController.py": "37fd56d304f3f87d59a6b5dfdad00d4c8447e3df8521f4e95637a9415007620d",
     "app/controllers/native/__init__.py": "d88dfbc0d0ba007dbe266b2f607f5d36732bfc3496e4fb90b9aeaf6386e7726a",
     "app/controllers/native/cng_windows.py": "264ac78b15574a9912ee9eca9910b752efa5bbce75c6556dfd83a493ba1eb6e2",
     "app/controllers/native/enclave_mac.py": "7a57db15a037245f6589c51cf650a4a0254f5fae503ec9dfd0e59dd155a72bd3",
     "app/controllers/native/tpm_linux.py": "4c1171582f70b23bc1468a5e4f124b6d07ef660dbf78ffffaad762e8eb7c6721",
     "app/controllers/startElectionController.py": "dcf2833f5201c343fc97f7688537d50743ca1692269d4851e32b8866c256b85a",
     "app/controllers/tallyElectionController.py": "3bde2f7ade84c8c395213ce47c8f7f11366108619ba554605b64a2accb301391",
+    "app/resources/initial_key.json": "38229cf5a3b59eec7fd4bdf73201649815044067e85a7ee7bd1a9afa48385990",
     "app/services/__init__.py": "4ccb3de16db786487f9badf552bdbd7012d0899220a9b51cb45f3c39ba970078",
     "app/services/api_routes.py": "1b973cd95cdf623c508d9dc806eb02c5adaad51a1253ae1d97ca508e5d868095",
     "app/services/election_api.py": "a8802b05215e15aa9a5a4fd8091388987b2cea9bf7a54de8c0e5fa72020d3a6a",
-    "app/services/http_client.py": "791a1e5d3137691413effd501795f6315473a20a2fe43ceded37fd613c65f5b2",
-    "app/services/security_guard.py": "82e5743da9868768a82d6e3b3da4de08cdef1a76768a63613042fc73f4c056c8",
+    "app/services/http_client.py": "987067491d3facb02d41b4254486be599be11ccf0e82c6739daf27d032f24fdc",
+    "app/services/security_guard.py": "bdc18162af9a3f8e37a46904f3599c00807eca85c864b201530c27880551015a",
     "main.py": "729ac3bc486810b0d555b1daad2b5d7b6cd9b12f3fa615efd7ab9cf4b61e8441"
   },
-  "root_hash": "70ba1ce57fef24e75cd616c51626a174f157c62ed336a278eeacf6b59c331938"
+  "root_hash": "9606fd0c0dc64a9b63d982c9645116aba76fd5898ac46cb24ebda12ad35c1be4"
 }
