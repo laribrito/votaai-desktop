@@ -137,13 +137,15 @@ class TestSecurityGuard(unittest.TestCase):
     def test_anti_tamper_detects_modified_removed_and_injected_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            (root / "app").mkdir()
+            (root / "app" / "resources").mkdir(parents=True)
             (root / "Design").mkdir()
 
             py_file = root / "app" / "logic.py"
             qml_file = root / "Design" / "View.qml"
+            initial_key_file = root / "app" / "resources" / "initial_key.json"
             py_file.write_text("def vote():\n    return True\n", encoding="utf-8")
             qml_file.write_text("import QtQuick 2.15\nItem {}\n", encoding="utf-8")
+            initial_key_file.write_text('{"KeyName": "VotaAI_SecureKey_1", "PublicKeyBase64": "ORIG"}', encoding="utf-8")
 
             # Gera manifesto válido
             generate_integrity_manifest(project_root=root, save=True)
@@ -158,6 +160,15 @@ class TestSecurityGuard(unittest.TestCase):
 
             # Restaura o QML original
             qml_file.write_text("import QtQuick 2.15\nItem {}\n", encoding="utf-8")
+            violated, _ = verify_file_integrity(project_root=root)
+            self.assertFalse(violated)
+
+            # Caso 1b: Adulteração da chave pública estática ancorada (initial_key.json)
+            initial_key_file.write_text('{"KeyName": "VotaAI_SecureKey_1", "PublicKeyBase64": "FORGED"}', encoding="utf-8")
+            violated, reason = verify_file_integrity(project_root=root)
+            self.assertTrue(violated)
+            self.assertIn("app/resources/initial_key.json", reason)
+            initial_key_file.write_text('{"KeyName": "VotaAI_SecureKey_1", "PublicKeyBase64": "ORIG"}', encoding="utf-8")
             violated, _ = verify_file_integrity(project_root=root)
             self.assertFalse(violated)
 

@@ -98,6 +98,48 @@ class TestAuthEmailVerification(unittest.TestCase):
         req_after_clear = mock_urlopen.call_args_list[-1][0][0]
         self.assertIsNone(req_after_clear.get_header("Authorization"))
 
+    @patch('app.services.http_client.urllib.request.urlopen')
+    @patch('app.services.http_client.EncryptionController')
+    def test_http_client_rejects_plaintext_200_response(self, mock_enc_cls, mock_urlopen):
+        from app.controllers.encryptionController import EncryptionController
+
+        real_enc = EncryptionController.__new__(EncryptionController)
+        real_enc.encrypt_payload = MagicMock(
+            return_value={"encrypted_payload": "a", "encrypted_aes_key": "b", "iv": "c", "tag": "d"}
+        )
+        mock_enc_cls.return_value = real_enc
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"status": "ok", "token": "FORGED_PLAINTEXT"}'
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        client = HttpClient()
+        res = client.post("/api/auth/login/", {"username": "admin"})
+        self.assertEqual(res["status"], "erro")
+        self.assertIn("não está cifrada", res["mensagem"])
+
+    @patch('app.services.http_client.urllib.request.urlopen')
+    @patch('app.services.http_client.EncryptionController')
+    def test_http_client_rejects_200_when_decryption_fails(self, mock_enc_cls, mock_urlopen):
+        mock_enc = mock_enc_cls.return_value
+        mock_enc.encrypt_payload.return_value = {"encrypted_payload": "a", "encrypted_aes_key": "b", "iv": "c", "tag": "d"}
+        mock_enc.decrypt_response.side_effect = ValueError("InvalidTag")
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"encrypted_payload": "x", "encrypted_aes_key": "y", "iv": "z", "tag": "w"}'
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        client = HttpClient()
+        res = client.post("/api/auth/login/", {"username": "admin"})
+        self.assertEqual(res["status"], "erro")
+        self.assertIn("InvalidTag", res["mensagem"])
+        mock_enc.decrypt_response.assert_called_once_with(
+            '{"encrypted_payload": "x", "encrypted_aes_key": "y", "iv": "z", "tag": "w"}',
+            require_encrypted=True,
+        )
+
     def test_auth_controller_logout_clears_http_client_token(self):
         HttpClient.set_auth_token("knox-active-token")
         self.controller._auth_token = "knox-active-token"
