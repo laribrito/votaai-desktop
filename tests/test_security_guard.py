@@ -27,11 +27,13 @@ from app.services.security_guard import (
 
 class TestSecurityGuard(unittest.TestCase):
     def setUp(self):
-        # Limpa snapshots de monkey-patching antes de cada teste
+        # Limpa snapshots de monkey-patching e violações de audit hook antes de cada teste
         security_guard._FUNCTION_FINGERPRINTS.clear()
+        security_guard._AUDIT_TRACER_VIOLATION = None
 
     def tearDown(self):
         security_guard._FUNCTION_FINGERPRINTS.clear()
+        security_guard._AUDIT_TRACER_VIOLATION = None
 
     # ─────────────────────────────────────────────────────────────────────────
     # 1. Testes Contra Root / Privilégio Elevado (Sem Secure Boot)
@@ -209,6 +211,25 @@ class TestSecurityGuard(unittest.TestCase):
         with patch.dict(os.environ, {"LD_PRELOAD": "/tmp/hook.so"}):
             with self.assertRaises(SecurityViolationError):
                 SecurityGuard.enforce(check_files=False, abort_on_violation=False)
+
+    def test_security_guard_ignores_disable_env_when_frozen(self):
+        with patch.object(sys, "frozen", True, create=True), \
+             patch.dict(os.environ, {"VOTAAI_SECURITY_GUARD": "0"}):
+            self.assertTrue(SecurityGuard.is_enabled())
+
+    def test_anti_debug_detects_audit_tracer_and_f_trace(self):
+        with patch.object(security_guard, "_AUDIT_TRACER_VIOLATION", "Tracer/profiler Python ativado em runtime via evento 'sys.settrace'."):
+            violated, reason = check_python_debugger()
+            self.assertTrue(violated)
+            self.assertIn("sys.settrace", reason)
+
+        fake_frame = type("FakeFrame", (), {"f_trace": lambda *a: None, "f_back": None})()
+        with patch("sys.gettrace", return_value=None), \
+             patch("threading.gettrace", return_value=None), \
+             patch("sys._current_frames", return_value={1234: fake_frame}):
+            violated, reason = check_python_debugger()
+            self.assertTrue(violated)
+            self.assertIn("f_trace", reason)
 
 
 if __name__ == "__main__":
