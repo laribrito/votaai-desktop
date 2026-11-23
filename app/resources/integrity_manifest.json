@@ -42,8 +42,8 @@
     "app/services/api_routes.py": "1b973cd95cdf623c508d9dc806eb02c5adaad51a1253ae1d97ca508e5d868095",
     "app/services/election_api.py": "a8802b05215e15aa9a5a4fd8091388987b2cea9bf7a54de8c0e5fa72020d3a6a",
     "app/services/http_client.py": "987067491d3facb02d41b4254486be599be11ccf0e82c6739daf27d032f24fdc",
-    "app/services/security_guard.py": "bdc18162af9a3f8e37a46904f3599c00807eca85c864b201530c27880551015a",
+    "app/services/security_guard.py": "0fc34a4b5334482de569bae4486c739a0c5dd9bccedd5da10c8646cb390c0866",
     "main.py": "729ac3bc486810b0d555b1daad2b5d7b6cd9b12f3fa615efd7ab9cf4b61e8441"
   },
-  "root_hash": "9606fd0c0dc64a9b63d982c9645116aba76fd5898ac46cb24ebda12ad35c1be4"
+  "root_hash": "a425a2ceebf32985d319b2c756025cd627b21958da3d0f9917d6b0003f927405"
 }
