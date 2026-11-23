@@ -167,12 +167,30 @@ def check_qml_debug_flags(argv=None) -> tuple[bool, str]:
 def check_python_debugger() -> tuple[bool, str]:
     """
     Detecta depuradores, tracers e ferramentas de instrumentação no runtime do Python:
-    - sys.gettrace()
+    - Audit hook global (sys.addaudithook) para sys.settrace / sys.setprofile em qualquer thread
+    - sys.gettrace() e threading.gettrace()
+    - frame.f_trace em qualquer thread ativa via sys._current_frames()
     - sys.monitoring (Python 3.12+)
     - Módulos de debug carregados em sys.modules (pdb, pydevd, debugpy, frida, etc.)
     """
+    if _AUDIT_TRACER_VIOLATION:
+        return True, _AUDIT_TRACER_VIOLATION
+
     if sys.gettrace() is not None:
         return True, "Tracer Python ativo detectado via sys.gettrace()."
+
+    if hasattr(threading, "gettrace") and threading.gettrace() is not None:
+        return True, "Tracer Python ativo detectado via threading.gettrace()."
+
+    try:
+        for tid, frame in sys._current_frames().items():
+            cur = frame
+            while cur is not None:
+                if getattr(cur, "f_trace", None) is not None:
+                    return True, f"Tracer Python ativo detectado na pilha da thread {tid} via f_trace."
+                cur = cur.f_back
+    except Exception:
+        pass
 
     if hasattr(sys, "monitoring"):
         try:
@@ -427,6 +445,33 @@ def verify_file_integrity(project_root: Path = None, manifest_path: Path = None)
 # Registro em memória de fingerprints de bytecode para proteção Anti-Monkey-Patching
 _FUNCTION_FINGERPRINTS: dict[str, tuple[int, str]] = {}
 _FINGERPRINT_LOCK = threading.Lock()
+_AUDIT_TRACER_VIOLATION: str | None = None
+_AUDIT_HOOK_INSTALLED = False
+
+
+def _security_audit_hook(event: str, _args) -> None:
+    """Captura ativação de tracers/profilers (sys.settrace/setprofile) em qualquer thread."""
+    global _AUDIT_TRACER_VIOLATION
+    if event in (
+        "sys.settrace",
+        "sys.setprofile",
+        "cpython.PyEval_SetTrace",
+        "cpython.PyEval_SetProfile",
+    ):
+        if SecurityGuard.is_enabled():
+            _AUDIT_TRACER_VIOLATION = (
+                f"Tracer/profiler Python ativado em runtime via evento '{event}'."
+            )
+
+
+def _install_audit_hook() -> None:
+    """Instala o audit hook irrevogável do processo (PEP 578) para monitorar tracers."""
+    global _AUDIT_HOOK_INSTALLED
+    if _AUDIT_HOOK_INSTALLED:
+        return
+    if hasattr(sys, "addaudithook"):
+        sys.addaudithook(_security_audit_hook)
+        _AUDIT_HOOK_INSTALLED = True
 
 
 def _compute_callable_fingerprint(func) -> tuple[int, str]:
@@ -523,8 +568,11 @@ class SecurityGuard:
     def is_enabled() -> bool:
         """
         Retorna True se o SecurityGuard estiver ativo.
-        Pode ser configurado via variável de ambiente VOTAAI_SECURITY_GUARD (padrão: '1').
+        Em executável congelado (produção PyInstaller), permanece sempre ativo e ignora
+        VOTAAI_SECURITY_GUARD para impedir bypass por variável de ambiente.
         """
+        if getattr(sys, "frozen", False):
+            return True
         val = os.environ.get("VOTAAI_SECURITY_GUARD", "1").strip().lower()
         return val not in ("0", "false", "off", "disabled")
 
@@ -591,7 +639,8 @@ class SecurityGuard:
         if not cls.is_enabled():
             return
 
-        # 1. Hardening no nível do Sistema Operacional e Kernel
+        # 1. Hardening no nível do Sistema Operacional, Kernel e Audit Hook
+        _install_audit_hook()
         harden_process_memory()
         lock_process_privileges()
 
