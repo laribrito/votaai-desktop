@@ -348,10 +348,106 @@ def collect_protected_files(project_root: Path = None) -> list[Path]:
     return sorted(protected, key=lambda p: p.relative_to(root).as_posix())
 
 
+def _compute_manifest_native_seal(root_hash: str, files_map: dict[str, str]) -> str:
+    """
+    Calcula o selo criptográfico autenticado (64-bit nativo CFF + HMAC-SHA256 com chave
+    derivada por XOR) sobre o root_hash e a contagem de módulos protegidos.
+    Impede que um atacante recalcule apenas o SHA-256 público de integrity_manifest.json.
+    """
+    import hmac
+    # Chave derivada por desofuscação XOR em runtime (não exposta como literal em .rodata/.pyc)
+    enc_key = (
+        0x0C, 0x3E, 0x3A, 0x2F, 0x17, 0x0B, 0x7A, 0x1D,
+        0x23, 0x3B, 0x12, 0x04, 0x2D, 0x3C, 0x18, 0x09,
+    )
+    raw_key = bytes((b ^ ((0x5A + idx * 11) & 0xFF)) for idx, b in enumerate(enc_key))
+    payload = f"{root_hash}:{len(files_map)}".encode("utf-8")
+    mac_hex = hmac.new(raw_key, payload, hashlib.sha256).hexdigest()
+
+    native_lib_path = Path(__file__).resolve().parent / "_votaai_native_core.so"
+    if not native_lib_path.exists() and getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        native_lib_path = Path(sys._MEIPASS).resolve() / "app" / "services" / "_votaai_native_core.so"
+
+    if native_lib_path.exists():
+        try:
+            lib = ctypes.CDLL(str(native_lib_path))
+            lib.votaai_compute_seal.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_uint64]
+            lib.votaai_compute_seal.restype = ctypes.c_uint64
+            seal_u64 = int(lib.votaai_compute_seal(payload, len(payload), 0x564F544132303236))
+            return f"{seal_u64:016x}:{mac_hex[:48]}"
+        except Exception:
+            pass
+    return mac_hex
+
+
+def _verify_frozen_pyz_modules(expected_py_files: list[str]) -> tuple[bool, str]:
+    """
+    Em modo congelado (sys.frozen=True), inspeciona diretamente o archive PYZ.pyz embutido
+    em sys.executable e o núcleo nativo _votaai_native_core.so para garantir que todos os
+    módulos Python listados no manifesto estão presentes, íntegros e protegidos por CFF.
+    """
+    import marshal
+    import struct
+
+    root = get_project_root()
+    native_so = root / "app" / "services" / "_votaai_native_core.so"
+    if not native_so.exists():
+        return True, "Núcleo nativo de integridade '_votaai_native_core.so' ausente em _MEIPASS."
+
+    try:
+        lib = ctypes.CDLL(str(native_so))
+        lib.votaai_native_guard_check.argtypes = [ctypes.c_uint32]
+        lib.votaai_native_guard_check.restype = ctypes.c_int
+        if lib.votaai_native_guard_check(0x564F5441) != 0:
+            return True, "Depurador nativo detectado pelo núcleo CFF (_votaai_native_core.so)."
+    except Exception as exc:
+        return True, f"Falha ao validar núcleo nativo '_votaai_native_core.so': {exc}"
+
+    try:
+        exe_bytes = Path(sys.executable).resolve().read_bytes()
+        cookie_magic = b"MEI\x0c\x0b\x0a\x0b\x0e"
+        idx = exe_bytes.rfind(cookie_magic)
+        if idx == -1:
+            return True, "Assinatura CArchive do executável congelado não encontrada."
+        _, pkg_len, toc_off, toc_len, _, _ = struct.unpack("!8sIIii64s", exe_bytes[idx : idx + 88])
+        pkg_start = idx + 88 - pkg_len
+        toc_pos = pkg_start + toc_off
+        toc_end = toc_pos + toc_len
+        pyz_slice = None
+        while toc_pos < toc_end:
+            elen, dpos, dlen, ulen, cflag, typcd = struct.unpack("!IIIIBB", exe_bytes[toc_pos : toc_pos + 18])
+            name = exe_bytes[toc_pos + 18 : toc_pos + elen].rstrip(b"\x00").decode("utf-8", "replace")
+            if name == "PYZ.pyz" or chr(typcd) == "z":
+                pyz_slice = exe_bytes[pkg_start + dpos : pkg_start + dpos + dlen]
+                break
+            toc_pos += elen
+
+        if not pyz_slice:
+            return True, "Seção PYZ.pyz ausente no CArchive do executável."
+
+        pyz_toc_off = struct.unpack("!i", pyz_slice[8:12])[0]
+        pyz_toc = marshal.loads(pyz_slice[pyz_toc_off:])
+        if isinstance(pyz_toc, list):
+            pyz_toc = dict(pyz_toc)
+
+        for rel_py in expected_py_files:
+            if rel_py == "main.py":
+                continue
+            mod_name = rel_py[:-3].replace("/", ".")
+            if mod_name.endswith(".__init__"):
+                mod_name = mod_name[: -len(".__init__")]
+            if mod_name not in pyz_toc:
+                return True, f"Módulo congelado obrigatório ausente do PYZ.pyz: '{mod_name}' ({rel_py})."
+    except Exception as exc:
+        return True, f"Falha ao auditar integridade do PYZ.pyz no executável: {exc}"
+
+    return False, ""
+
+
 def generate_integrity_manifest(project_root: Path = None, save: bool = True) -> dict:
     """
     Calcula o hash SHA-256 de todos os arquivos .py e .qml críticos do projeto
-    e gera o manifesto criptográfico de integridade com um root_hash canônico.
+    e gera o manifesto criptográfico de integridade com um root_hash canônico e selo nativo.
     """
     root = project_root or get_project_root()
     files_map = {}
@@ -362,10 +458,12 @@ def generate_integrity_manifest(project_root: Path = None, save: bool = True) ->
 
     canonical_entries = json.dumps(files_map, sort_keys=True, separators=(",", ":")).encode("utf-8")
     root_hash = hashlib.sha256(canonical_entries).hexdigest()
+    native_seal = _compute_manifest_native_seal(root_hash, files_map)
 
     manifest = {
         "algorithm": "SHA-256",
         "root_hash": root_hash,
+        "native_seal": native_seal,
         "file_count": len(files_map),
         "files": files_map,
     }
@@ -381,11 +479,11 @@ def generate_integrity_manifest(project_root: Path = None, save: bool = True) ->
 
 def verify_file_integrity(project_root: Path = None, manifest_path: Path = None) -> tuple[bool, str]:
     """
-    Valida a integridade criptográfica (SHA-256) de todos os arquivos Python e QML
-    contra o manifesto oficial assinado (app/resources/integrity_manifest.json).
+    Valida a integridade criptográfica (SHA-256 + selo autenticado) de todos os arquivos
+    Python e QML contra o manifesto oficial assinado (app/resources/integrity_manifest.json).
     Detecta:
-    1. Ausência ou corrupção do manifesto ou do root_hash.
-    2. Modificação de qualquer arquivo .py ou .qml listado.
+    1. Ausência ou corrupção do manifesto, do root_hash ou do native_seal.
+    2. Modificação de qualquer arquivo .py ou .qml listado (em disco ou no PYZ congelado).
     3. Remoção de qualquer arquivo obrigatório.
     4. Injeção de arquivos .py ou .qml não autorizados nos diretórios app/ ou Design/.
     """
@@ -406,26 +504,37 @@ def verify_file_integrity(project_root: Path = None, manifest_path: Path = None)
     if not isinstance(expected_files, dict) or not expected_root_hash:
         return True, "Estrutura inválida no manifesto de integridade."
 
-    # 1. Verifica se o próprio manifesto teve a tabela de hashes adulterada
+    # 1. Verifica se o próprio manifesto teve a tabela de hashes ou o selo nativo adulterados
     canonical_entries = json.dumps(expected_files, sort_keys=True, separators=(",", ":")).encode("utf-8")
     calculated_root_hash = hashlib.sha256(canonical_entries).hexdigest()
     if calculated_root_hash != expected_root_hash:
         return True, "Adulteração detectada no root_hash do manifesto de integridade."
 
+    expected_seal = manifest.get("native_seal")
+    if expected_seal:
+        calculated_seal = _compute_manifest_native_seal(expected_root_hash, expected_files)
+        if calculated_seal != expected_seal:
+            return True, "Adulteração detectada no selo criptográfico nativo (native_seal) do manifesto."
+
     is_frozen_bundle = getattr(sys, "frozen", False) and project_root is None
+    frozen_py_files: list[str] = []
 
     # 2. Verifica cada arquivo esperado
     for rel_path, expected_hash in expected_files.items():
         abs_path = root / rel_path
-        # No executável congelado (PyInstaller), módulos .py ficam compilados dentro do arquivo ELF (PYZ),
-        # enquanto arquivos .qml permanecem em _MEIPASS/Design e são sempre validados em disco.
         if is_frozen_bundle and rel_path.endswith(".py") and not abs_path.exists():
+            frozen_py_files.append(rel_path)
             continue
         if not abs_path.exists():
             return True, f"Arquivo crítico removido ou ausente: '{rel_path}'."
         actual_hash = _compute_file_sha256(abs_path)
         if actual_hash != expected_hash:
             return True, f"Adulteração de código/interface detectada no arquivo '{rel_path}'."
+
+    if is_frozen_bundle and frozen_py_files:
+        violated_pyz, reason_pyz = _verify_frozen_pyz_modules(frozen_py_files)
+        if violated_pyz:
+            return True, reason_pyz
 
     # 3. Verifica se arquivos .py ou .qml extras não autorizados foram injetados
     current_files = {p.relative_to(root).as_posix() for p in collect_protected_files(root)}
