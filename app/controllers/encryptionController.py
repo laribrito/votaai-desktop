@@ -3,6 +3,7 @@ import sys
 import json
 import base64
 import struct
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import serialization, hashes
@@ -215,9 +216,41 @@ class EncryptionController:
         }
         return envelope
 
+    def _verify_server_signature(self, payload_bytes: bytes, signature_b64: str) -> None:
+        """
+        Verifica a assinatura RSA do servidor (public key pinning com initial_key.json)
+        sobre os bytes exatos do payload decifrado.
+        Aceita RSA-PSS + SHA-256 (Linux TPM) com fallback para RSA PKCS#1 v1.5 + SHA-256 (Windows CNG).
+        """
+        if not signature_b64 or not isinstance(signature_b64, str):
+            raise ValueError("Assinatura do servidor ('server_signature') ausente na resposta cifrada.")
+
+        if not self.server_public_key:
+            self.server_public_key = self._load_server_public_key()
+            if not self.server_public_key:
+                raise RuntimeError("Chave pública do servidor não foi carregada corretamente.")
+
+        try:
+            signature_bytes = base64.b64decode(signature_b64, validate=True)
+        except Exception as exc:
+            raise ValueError("Assinatura do servidor ('server_signature') não é Base64 válido.") from exc
+
+        for pad in (
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.AUTO),
+            padding.PKCS1v15(),
+        ):
+            try:
+                self.server_public_key.verify(signature_bytes, payload_bytes, pad, hashes.SHA256())
+                return
+            except InvalidSignature:
+                continue
+
+        raise ValueError("Assinatura do servidor inválida (falha na verificação de public key pinning).")
+
     def decrypt_response(self, response_data, require_encrypted: bool = False):
         """
-        Descriptografa uma resposta recebida do servidor no formato híbrido (AES-GCM + RSA).
+        Descriptografa uma resposta recebida do servidor no formato híbrido (AES-GCM + RSA)
+        e valida a assinatura do servidor (`server_signature`) usando a chave pública ancorada.
         A chave AES é descriptografada diretamente no Secure Element / TPM de hardware.
         Quando `require_encrypted=True`, rejeita respostas vazias, não-JSON ou em texto claro.
         """
@@ -250,12 +283,16 @@ class EncryptionController:
         encrypted_aes_key = data_dict.get('encrypted_aes_key')
         iv = data_dict.get('iv')
         tag = data_dict.get('tag')
+        server_signature = data_dict.get('server_signature')
 
         if not encrypted_payload or not encrypted_aes_key or not iv or not tag:
             if require_encrypted:
                 raise ValueError("A resposta do servidor não está cifrada. Operação cancelada por segurança.")
             # Em fluxos que toleram JSON não cifrado (ex.: erros 4xx/5xx), retorna o próprio dict
             return data_dict
+
+        if not server_signature:
+            raise ValueError("Assinatura do servidor ('server_signature') ausente na resposta cifrada.")
 
         if not self.client_key_info:
             raise RuntimeError("Informações da chave de hardware do cliente não disponíveis.")
@@ -276,6 +313,10 @@ class EncryptionController:
 
         ciphertext = payload_bytes + tag_bytes
         decrypted_json_bytes = unpad_iso7816_4(aesgcm.decrypt(iv_bytes, ciphertext, None))
+
+        # 3. Valida a assinatura do servidor sobre os bytes exatos decifrados (public key pinning)
+        self._verify_server_signature(decrypted_json_bytes, server_signature)
+
         decrypted_str = decrypted_json_bytes.decode('utf-8')
 
         try:

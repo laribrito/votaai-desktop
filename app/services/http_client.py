@@ -91,8 +91,12 @@ class HttpClient:
                     decrypted = self.encryption_controller.decrypt_response(error_body)
                     print(f"[HttpClient] HTTPError descriptografado: {decrypted}")
                     error_body = decrypted
-                except Exception:
-                    pass
+                except Exception as de:
+                    print(f"[HttpClient] Falha ao validar/descriptografar HTTPError: {de}")
+                    return {
+                        "status": "erro",
+                        "mensagem": f"Falha de segurança: não foi possível validar ou descriptografar a resposta do servidor ({de}).",
+                    }
 
                 if isinstance(error_body, str):
                     try:
