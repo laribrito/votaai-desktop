@@ -5,7 +5,7 @@
     "Design/Design/Constants.qml": "181f228c5f82a4e335434fa78b4d7a0523b721753f1225b75eaed2911e3d3fc0",
     "Design/Design/EventListModel.qml": "9f51a379635be8c3d890c95036b47eaf4b79445ec4a6465fc912dbe52b359c45",
     "Design/Design/EventListSimulator.qml": "34a3accdee2ad2f5ce04fb5d3b4397694c8b905d2ca26b647b9ea4f7868d7884",
-    "Design/DesignContent/App.qml": "fdf40f5a9f33f2aefe14a84e625b0c400c6f9fb82881a75cf87820b5e488810e",
+    "Design/DesignContent/App.qml": "1afa6d444bd39d1931ae17a256c5ce24a5079c37b5e00e27374f2424ce630c83",
     "Design/DesignContent/Apurar.qml": "a6887f85ef8b5a56cd4119cd6a2feb07a392b3be54502150563713264710227e",
     "Design/DesignContent/ApurarForm.ui.qml": "9d57c9e59fba2cb612af1c62f94472ec38142d9ceaf6153d1ddd12b4cd9beadc",
     "Design/DesignContent/Auditoria.qml": "65b34de4b5769a4047fa4926f6e819b6a13a0bab53ddcc4ae31ed0ad6e0281f7",
@@ -21,7 +21,7 @@
     "Design/DesignContent/FecharForm.ui.qml": "b6868ad539dbd0fbb833260f5ce3429b563e105107b06a3ccf7c6ead82db21fa",
     "Design/DesignContent/Iniciar.qml": "5f98c673ccc9f88ec5c0aad03299a0da444d410e5e1b700d38a2868d9440eb0d",
     "Design/DesignContent/IniciarForm.ui.qml": "ed43918caff399bd14b2d52bde8438227968a86eeb271342daabec94b30816fb",
-    "Design/DesignContent/Main.ui.qml": "1eb677da1124bfa6ac12feed4f5329f268a6d3a47b9efde93f48e7731984c923",
+    "Design/DesignContent/Main.ui.qml": "9d80d163c94dc65fb5cf3df8e54bf35cb7d91ce8359acd91a2a44fbf98a397d5",
     "Design/DesignContent/ResponsibleUserBadge.qml": "34cae196bee9846741950fd7c13369cf4605ec0b2bb693134581792eea2a14a6",
     "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "app/controllers/authController.py": "2bb89a9d1b9770c539a191ef61dc01ea4cabf7035b5b9f7bd4946da8b2ff5703",
@@ -36,15 +36,15 @@
     "app/controllers/native/enclave_mac.py": "7a57db15a037245f6589c51cf650a4a0254f5fae503ec9dfd0e59dd155a72bd3",
     "app/controllers/native/tpm_linux.py": "4c1171582f70b23bc1468a5e4f124b6d07ef660dbf78ffffaad762e8eb7c6721",
     "app/controllers/startElectionController.py": "dcf2833f5201c343fc97f7688537d50743ca1692269d4851e32b8866c256b85a",
-    "app/controllers/tallyElectionController.py": "3bde2f7ade84c8c395213ce47c8f7f11366108619ba554605b64a2accb301391",
+    "app/controllers/tallyElectionController.py": "37d5248d04f01e0c8cdba696dd6a1a3ad9a36aaefd06d98a1eee9b8014166d20",
     "app/resources/initial_key.json": "38229cf5a3b59eec7fd4bdf73201649815044067e85a7ee7bd1a9afa48385990",
     "app/services/__init__.py": "4ccb3de16db786487f9badf552bdbd7012d0899220a9b51cb45f3c39ba970078",
-    "app/services/api_routes.py": "1b973cd95cdf623c508d9dc806eb02c5adaad51a1253ae1d97ca508e5d868095",
+    "app/services/api_routes.py": "d678f6dabe1fcec548bc42065d7195abcd8d5ffb91e293d167a80a6fb5456679",
     "app/services/election_api.py": "a8802b05215e15aa9a5a4fd8091388987b2cea9bf7a54de8c0e5fa72020d3a6a",
     "app/services/http_client.py": "987067491d3facb02d41b4254486be599be11ccf0e82c6739daf27d032f24fdc",
     "app/services/security_guard.py": "de57a0a2094abd50dc07a5250df078f074a708fdf7eb46e7920f17be1c7234fd",
     "main.py": "729ac3bc486810b0d555b1daad2b5d7b6cd9b12f3fa615efd7ab9cf4b61e8441"
   },
-  "native_seal": "7e328dee7e24c12a:c4f34bf435d64bee2cdef8296cbfd95addc9999bd33a15f9",
-  "root_hash": "bcec13e5a2d013da5c3ee0ce88cc630f547307dc98d5a7cb6db96e1d6b77cdca"
+  "native_seal": "b6c8e30d47d2481a:c0d5488f28d8b44728886400d1d11ed8855a9ca00684b96f",
+  "root_hash": "81eb54f1859ece752f11cdd587294f931d0c4f930ae61b201245cc37aa449afd"
 }
