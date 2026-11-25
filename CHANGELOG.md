@@ -1,3 +1,41 @@
+## v0.9.0 (2026-11-25)
+
+### Feat
+
+- **security**: add native CFF bytecode and frozen bundle protection
+- **security**: include pinned server initial_key.json in integrity manifest verification
+- **crypto**: apply ISO/IEC 7816-4 fixed-size padding to desktop API envelopes
+- **crypto**: unpad ISO/IEC 7816-4 ballots across tally controller and native backends
+- **security**: implement runtime anti-root, anti-debug and anti-tamper guard
+- **http**: send Accept-Language header in API requests
+- **ui**: add email verification step to admin registration screen
+- **auth**: handle email verification and resend in AuthController
+- **routes**: register admin email verification and resend endpoints
+- **audit**: display machine_fingerprint and election key_handle in audit screen
+- **crypto**: generate unique key_handle per election across native backends
+- **ui**: add Auditoria screen and public audit entry points in App, Login, and Cadastro views
+- **audit**: implement sovereign audit ZIP verification, PEM vote decryption, and core tallying
+- **ui**: render abstention metrics and question breakdown with percentages in Apurar
+- **election**: add metadata mapping, abstention metrics, and structured tally results
+- **election**: implement sovereign tallying, private key export, and UI in Apurar
+- **crypto**: manage election private key outside TEE for sovereign tallying
+- **ui**: integrate election closing flow, status feedback, and quorum display in Fechar views
+- **election**: implement CloseElectionController with TPM signing and anti-replay protection
+- **api**: add election close route definition
+- **ui**: add responsive single-column layout for compact displays
+- **window**: add window size limits and vertical scroll support
+
+### Fix
+
+- **security**: enforce security guard in frozen builds and detect cross-thread python tracers
+- **security**: require valid encrypted envelopes on HTTP 2xx desktop responses
+- **auth**: attach Knox Authorization token to protected desktop API requests
+
+### Refactor
+
+- troca mensagem do mecanismo de auditoria
+- **crypto**: refine election key metadata note in tpm_linux
+
 ## v0.8.0 (2026-10-11)
 
 ### Feat
