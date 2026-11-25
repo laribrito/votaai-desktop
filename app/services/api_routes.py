@@ -1,5 +1,5 @@
 """
-Centralizador de rotas da API do VotaAí Desktop.
+Centralizador de rotas da API do Vota-i 2.0 Desktop.
 
 Disponibiliza o dicionário `API_ROUTES` para acesso centralizado,
 carregando as URLs a partir de `app/resources/api_routes.json`.

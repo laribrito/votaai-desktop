@@ -1,6 +1,6 @@
-# VotaAí - Desktop Application
+# Vota-i 2.0 - Desktop Application
 
-Aplicativo desktop do sistema de votação digital seguro **VotaAí**, desenvolvido em **Python 3.12+**, **PySide6 (Qt Quick / QML)** e integração com criptografia em hardware (**TPM 2.0 / CNG / Secure Storage**).
+Aplicativo desktop do sistema de votação digital seguro **Vota-i 2.0**, desenvolvido em **Python 3.12+**, **PySide6 (Qt Quick / QML)** e integração com criptografia em hardware (**TPM 2.0 / CNG / Secure Storage**).
 
 ---
 
@@ -461,7 +461,7 @@ sequenceDiagram
 
 ## 🔐 Especificação Detalhada de Todas as Etapas de Criptografia (Desktop)
 
-O aplicativo **VotaAí Desktop** adota o princípio de segurança em profundidade (*defense-in-depth*), combinando criptografia assimétrica de hardware, envelopes híbridos autenticados e isolamento estrito de chaves privadas em todas as fases do ciclo de vida eleitoral. A seguir, detalham-se **todas as etapas criptográficas** executadas no cliente desktop:
+O aplicativo **Vota-i 2.0 Desktop** adota o princípio de segurança em profundidade (*defense-in-depth*), combinando criptografia assimétrica de hardware, envelopes híbridos autenticados e isolamento estrito de chaves privadas em todas as fases do ciclo de vida eleitoral. A seguir, detalham-se **todas as etapas criptográficas** executadas no cliente desktop:
 
 ---
 

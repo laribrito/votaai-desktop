@@ -157,7 +157,7 @@ class TallyElectionController(QObject):
     @staticmethod
     def _count_vote_static(vote_data, question_map: dict, option_map: dict, results: dict):
         """Helper para tabular respostas de cédulas decifradas usando nomes legíveis de questões e opções."""
-        # Formato padrão VotaAí Mobile: {"election_id": 1, "choices": {"1": 10}, "timestamp": "..."}
+        # Formato padrão Vota-i 2.0 Mobile: {"election_id": 1, "choices": {"1": 10}, "timestamp": "..."}
         if isinstance(vote_data, dict) and "choices" in vote_data and isinstance(vote_data["choices"], dict):
             for q_key, opt_val in vote_data["choices"].items():
                 q = question_map.get(str(q_key), question_map.get(q_key, f"Pergunta {q_key}"))

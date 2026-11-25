@@ -19,7 +19,7 @@ Window {
 
     flags: Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
     visible: true
-    title: "Vota Aí"
+    title: "Vota-i 2.0"
 
     function navigateTo(page) {
         return stackView.push(page)

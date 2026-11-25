@@ -27,7 +27,7 @@ Rectangle {
         id: text1
         x: 45
         y: 47
-        text: qsTr("Vota ai")
+        text: qsTr("Vota-i 2.0")
         font.pixelSize: 22
         font.weight: Font.Bold
     }
