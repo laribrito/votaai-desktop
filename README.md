@@ -781,3 +781,9 @@ votaai-desktop/
 ├── run_commands.py       # Script utilitário para facilitar comandos do Git/CLI do projeto
 └── requirements.txt      # Arquivo de dependências do Python
 ```
+
+---
+
+## 🤖 Declaração de Uso de Inteligência Artificial
+
+Declaro que foram utilizadas ferramentas de inteligência artificial generativa (Gemini, desenvolvida pelo Google) durante o processo de elaboração deste repositório. A IA foi aplicada de forma restrita como assistente de produtividade na implementação do código, debugging de erros de sintaxe, tradução de textos e revisão textual. Ressalta-se que a especificação de requisitos, a lógica de programação, a arquitetura de software e a validação de todos os algoritmos gerados foram realizadas e supervisionadas integralmente, mantendo a autoria intelectual humana sobre a solução desenvolvida.
